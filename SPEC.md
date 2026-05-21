@@ -391,6 +391,107 @@ images、對應 `.txt` captions 與 `dataset_manifest.json`。
 給定已存在的 export directory 且 overwrite disabled，export 必須以清楚錯誤失敗，
 並保持既有 export 內容不變。
 
+## Phase 0 Atomic Implementation Steps
+
+Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的資料流，不先鎖定
+真實 image analysis backend。以下步驟應能逐步實作、逐步測試，並 trace back 到
+`AC-01A`、Phase 0 output contract、business rules 與 error conditions。
+
+### P0-01: Config model
+
+- 定義 `reference_image_analysis_policy` config model。
+- 支援 `enabled`、`input_dir`、`output_file`、`aspects`。
+- 驗證 `aspects` 只能包含 `rendering`、`color_light`、`texture_artifacts`。
+- Spec reference: `reference_image_analysis_policy` validation, `AC-01A`。
+
+### P0-02: Disabled path
+
+- 當 `reference_image_analysis_policy.enabled = false` 時，不讀取 reference images。
+- 不要求 `reference_images/` 存在。
+- 不產生 `phase0/` output。
+- Spec reference: Business Rule 13。
+
+### P0-03: Reference image discovery
+
+- 當 Phase 0 enabled 時，掃描 `reference_image_analysis_policy.input_dir`。
+- 只接受支援的 image file extensions。
+- 若目錄不存在或沒有支援圖片，回報 spec-defined error。
+- Spec reference: Phase 0 error conditions。
+
+### P0-04: Reference image manifest
+
+- 為每張 reference image 建立 manifest record。
+- 每筆 record 至少包含 relative path、file hash、image size、analysis status。
+- Manifest 輸出到 `phase0/reference_image_manifest.json`。
+- Spec reference: Phase 0 output contract。
+
+### P0-05: Candidate gene schema
+
+- 定義 `style_gene_candidates.json` schema。
+- `aspects` 必須包含 `rendering`、`color_light`、`texture_artifacts`。
+- 每個 candidate gene 必須包含 `id`、`prompt`、`confidence`、`source_images`、`notes`。
+- Spec reference: Phase 0 candidate gene validation rules。
+
+### P0-06: Candidate gene validator
+
+- 驗證 candidate gene IDs 在檔案內唯一。
+- 驗證 `prompt` 不為空。
+- 驗證 `confidence` 介於 `0` 到 `1`。
+- 驗證 `source_images` 至少有一個 relative path。
+- Spec reference: Phase 0 candidate gene validation rules, invariants。
+
+### P0-07: Extractor interface
+
+- 定義 Phase 0 extractor interface。
+- Interface input 為 reference image manifest records。
+- Interface output 為三面向 candidate gene collections。
+- Interface 不應直接寫入 `style_gene_pool.json`。
+- Spec reference: Business Rule 14。
+
+### P0-08: Deterministic mock extractor
+
+- 實作 deterministic mock extractor，供測試與早期 CLI 使用。
+- Mock extractor 可根據檔名、固定 fixture metadata 或測試輸入產生候選 genes。
+- 相同輸入必須產生等價 `style_gene_candidates.json`。
+- Spec reference: `AC-01A` and reproducible MVP behavior。
+
+### P0-09: Aspect classification
+
+- 確保 extractor output 被分類到三個固定 aspects。
+- 不允許輸出未知 aspect key。
+- 每個輸出 candidate gene 的 ID prefix 應對應 aspect，例如 `rendering_`、`color_light_`、`texture_artifacts_`。
+- Spec reference: `AC-01A`, Business Rule 15。
+
+### P0-10: Phase 0 output writer
+
+- 建立 `phase0/` output directory。
+- 寫出 `reference_image_manifest.json`。
+- 寫出 `style_gene_candidates.json`。
+- Metadata 中的路徑應相對於 run directory 或 project-defined input root。
+- Spec reference: Phase 0 output contract。
+
+### P0-11: No implicit gene pool overwrite
+
+- Phase 0 不得直接覆蓋 `style_gene_pool.json`。
+- 若未來加入 merge command，merge 必須是獨立步驟，且輸入為已驗證的 candidate genes。
+- Spec reference: Business Rule 14, invariant "Phase 0 失敗不可破壞既有 `style_gene_pool.json`"。
+
+### P0-12: AC-01A test coverage
+
+- 補上 `T-AC01A-phase0-reference-analysis`。
+- 測試 enabled path 會產生 manifest 與 candidate genes。
+- 測試 disabled path 不要求 reference images。
+- 測試 invalid directory、empty directory、invalid candidate schema 會回報清楚錯誤。
+- Spec reference: `AC-01A`, Phase 0 error conditions。
+
+### Deferred from Phase 0 MVP
+
+- 真實 CLIP / captioner / vision model backend。
+- confidence 的模型化計算方式。
+- human approval UI。
+- candidate genes 合併到 `style_gene_pool.json` 的互動流程。
+- reference image 的版權、作者、流派或資料來源判定。
+
 ## Testing Implications
 
 測試案例必須能 trace back 到 acceptance criteria：
