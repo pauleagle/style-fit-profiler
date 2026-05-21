@@ -1,9 +1,11 @@
 from importlib import import_module
 from pathlib import Path
+import sys
 import unittest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 
 class ProjectScaffoldTests(unittest.TestCase):
