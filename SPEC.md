@@ -398,6 +398,17 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 真實 image analysis backend。以下步驟應能逐步實作、逐步測試，並 trace back 到
 `AC-01A`、Phase 0 output contract、business rules 與 error conditions。
 
+### P0-00: Python project scaffold
+
+- 建立最小 Python project metadata，例如 `pyproject.toml`。
+- 建立 `src/style_fit_profiler/` package layout。
+- 建立 `tests/` 測試目錄與可執行的 stdlib `unittest` discovery。
+- 建立 `.gitignore`，排除 `__pycache__/`、`.venv/` 與常見 Python test / lint cache。
+- 不引入 Phase 0 domain behavior。
+- 不預先綁定 heavy image generation 或 image analysis dependencies。
+- Validation / test hook: `python -m unittest discover -s tests` 可成功執行。
+- Spec reference: Phase 0 Atomic Implementation prerequisite。
+
 ### P0-01: Config model
 
 - 定義 `reference_image_analysis_policy` config model。
@@ -542,6 +553,7 @@ Purpose: 確認 export 預設不覆蓋既有輸出。
 
 建議第一層測試：
 
+- P0-00 project scaffold smoke test：確認 package 可 import，且 `python -m unittest discover -s tests` 可執行。
 - Config validation unit tests。
 - Gene pool validation unit tests。
 - Phase 0 candidate gene schema unit tests。
