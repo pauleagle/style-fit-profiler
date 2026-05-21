@@ -128,7 +128,8 @@ optionally extract candidate genes from reference images
 - `candidates_per_generation` 必須大於 `0`。
 - `max_generations` 必須大於 `0`。
 - `reference_image_analysis_policy.enabled` 為 `false` 時，不需要 reference images。
-- `reference_image_analysis_policy.aspects` 若存在，必須只包含 `rendering`、`color_light`、`texture_artifacts`。
+- `reference_image_analysis_policy` 不可包含未知欄位；支援欄位只有 `enabled`、`input_dir`、`output_file`、`aspects`。
+- `reference_image_analysis_policy.aspects` 若存在，必須至少包含一個 aspect，且只能包含 `rendering`、`color_light`、`texture_artifacts`。
 - `selection_policy.min_selected` 必須至少為 `1`。
 - `selection_policy.max_selected` 不可大於 `candidates_per_generation`。
 - `evolution_policy.mutation_rate` 必須介於 `0` 到 `1`。
@@ -401,7 +402,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 - 定義 `reference_image_analysis_policy` config model。
 - 支援 `enabled`、`input_dir`、`output_file`、`aspects`。
-- 驗證 `aspects` 只能包含 `rendering`、`color_light`、`texture_artifacts`。
+- 拒絕 unknown policy fields，避免 config typo 被 silent ignore。
+- 驗證 `aspects` 至少包含一個 aspect，且只能包含 `rendering`、`color_light`、`texture_artifacts`。
 - Spec reference: `reference_image_analysis_policy` validation, `AC-01A`。
 
 ### P0-02: Disabled path
