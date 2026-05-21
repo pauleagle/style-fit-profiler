@@ -3,7 +3,7 @@
 ## 規格狀態
 
 - 目標版本：`v0.1.0`
-- 版本名稱：Interactive style exploration MVP
+- 版本名稱：Optional reference-image bootstrap + interactive style exploration MVP
 - 規格狀態：Draft
 - 最後更新：2026-05-21
 
@@ -18,6 +18,10 @@ Style Fit Profiler 的目標，是讓使用者透過一輪又一輪的候選圖�
 系統應該從使用者的偏好選擇中，記錄並演化 prompt genes、seed genes 與其他
 風格條件。
 
+若使用者已經有一批喜歡的既有圖片，`v0.1.0` 可選擇先執行 Phase 0，從這些
+圖片抽取候選風格基因。Phase 0 的輸出不是最終風格定義，而是 Phase 1 初始
+gene pool 的 bootstrap 來源。
+
 長期版本會包含資料集整理、LoRA 匯出、LoRA 訓練與驗證。`v0.1.0` 只定義最小
 可用的互動式探索流程，重點是收集偏好、保留可追蹤紀錄，並把入選圖片整理成
 早期 LoRA dataset 需要的輸出格式。
@@ -27,7 +31,8 @@ Style Fit Profiler 的目標，是讓使用者透過一輪又一輪的候選圖�
 `v0.1.0` 必須提供一條可重現的風格探索流程：
 
 ```text
-load config and gene pool
+optionally extract candidate genes from reference images
+  -> load config and gene pool
   -> generate candidate images
   -> record user selections
   -> evolve prompt and seed genes
@@ -46,6 +51,7 @@ load config and gene pool
 
 - 載入並驗證 `style_profiler_config.json`。
 - 載入並驗證 `style_gene_pool.json`。
+- 可選擇從 reference images 抽取候選風格基因。
 - 為每次探索建立唯一 run directory。
 - 依設定產生每一代候選圖。
 - 支援可測試的 mock 或 dry-run generation backend。
@@ -63,6 +69,7 @@ load config and gene pool
 - 整合 BLIP、WD14 或其他自動 tagger。
 - 提供完整 GUI。
 - 提供自動美學評分。
+- 從既有圖片精準判斷藝術家、流派或版權狀態。
 - 保證真實 Stable Diffusion backend 在不同機器產生 pixel-identical 圖片。
 - 自動判斷最終風格是否已經收斂。
 - 支援多人或 hosted collaboration。
@@ -87,6 +94,16 @@ load config and gene pool
   "candidates_per_generation": 8,
   "max_generations": 10,
   "random_seed": 12345,
+  "reference_image_analysis_policy": {
+    "enabled": false,
+    "input_dir": "reference_images",
+    "output_file": "style_gene_candidates.json",
+    "aspects": [
+      "rendering",
+      "color_light",
+      "texture_artifacts"
+    ]
+  },
   "selection_policy": {
     "min_selected": 1,
     "max_selected": 4
@@ -110,6 +127,8 @@ load config and gene pool
 - `image_size.width` 與 `image_size.height` 必須是正整數。
 - `candidates_per_generation` 必須大於 `0`。
 - `max_generations` 必須大於 `0`。
+- `reference_image_analysis_policy.enabled` 為 `false` 時，不需要 reference images。
+- `reference_image_analysis_policy.aspects` 若存在，必須只包含 `rendering`、`color_light`、`texture_artifacts`。
 - `selection_policy.min_selected` 必須至少為 `1`。
 - `selection_policy.max_selected` 不可大於 `candidates_per_generation`。
 - `evolution_policy.mutation_rate` 必須介於 `0` 到 `1`。
@@ -123,17 +142,24 @@ load config and gene pool
 {
   "version": "0.1.0",
   "genes": {
-    "medium": [
+    "rendering": [
       {
-        "id": "medium_watercolor",
-        "prompt": "watercolor illustration",
+        "id": "rendering_watercolor_edges",
+        "prompt": "watercolor illustration with soft edges",
         "weight": 1.0
       }
     ],
-    "color_palette": [
+    "color_light": [
       {
-        "id": "palette_muted_cyan_rose",
-        "prompt": "muted cyan and rose palette",
+        "id": "color_light_muted_cyan_rose",
+        "prompt": "muted cyan and rose palette with gentle rim light",
+        "weight": 1.0
+      }
+    ],
+    "texture_artifacts": [
+      {
+        "id": "texture_artifacts_subtle_paper_grain",
+        "prompt": "subtle paper grain texture",
         "weight": 1.0
       }
     ]
@@ -149,6 +175,76 @@ load config and gene pool
 - `prompt` 不可為空。
 - `weight` 必須是正數。
 
+### Phase 0 reference images（optional）
+
+當 `reference_image_analysis_policy.enabled` 為 `true` 時，系統會從
+`reference_image_analysis_policy.input_dir` 讀取既有圖片，抽取候選風格基因。
+
+Phase 0 必須把候選基因分成三個面向：
+
+1. 渲染與技法（Rendering）
+   - 例如媒材感、筆觸、線條品質、描邊方式、上色方式、陰影處理、邊緣處理。
+2. 色彩與光效（Color & Light）
+   - 例如色盤、飽和度、明暗對比、曝光傾向、光源方向、glow、rim light、色溫。
+3. 材質與雜訊（Texture & Artifacts）
+   - 例如紙張顆粒、膠片顆粒、halftone、壓縮痕跡、掃描感、筆刷紋理、數位雜訊。
+
+Phase 0 應產生 `style_gene_candidates.json`，但不應直接覆蓋
+`style_gene_pool.json`。使用者或後續流程必須能先檢查、刪改或合併候選 genes。
+
+候選基因輸出格式：
+
+```json
+{
+  "version": "0.1.0",
+  "source": "phase0_reference_image_analysis",
+  "aspects": {
+    "rendering": [
+      {
+        "id": "rendering_soft_airbrush_edges",
+        "prompt": "soft airbrushed edges",
+        "confidence": 0.72,
+        "source_images": [
+          "reference_images/ref-001.png"
+        ],
+        "notes": ""
+      }
+    ],
+    "color_light": [
+      {
+        "id": "color_light_muted_cyan_rose",
+        "prompt": "muted cyan and rose palette",
+        "confidence": 0.68,
+        "source_images": [
+          "reference_images/ref-001.png"
+        ],
+        "notes": ""
+      }
+    ],
+    "texture_artifacts": [
+      {
+        "id": "texture_artifacts_paper_grain",
+        "prompt": "subtle paper grain texture",
+        "confidence": 0.61,
+        "source_images": [
+          "reference_images/ref-002.png"
+        ],
+        "notes": ""
+      }
+    ]
+  }
+}
+```
+
+驗證規則：
+
+- `aspects` 必須包含 `rendering`、`color_light`、`texture_artifacts` 三個 keys。
+- 每個候選 gene 的 `id` 在檔案內必須唯一。
+- 每個候選 gene 的 `prompt` 不可為空。
+- `confidence` 必須介於 `0` 到 `1`。
+- `source_images` 至少要包含一個 reference image path。
+- `source_images` 應使用相對路徑。
+
 ### 使用者選擇
 
 每一個完成的 generation 都必須接收 selected candidate IDs。Rejected candidates
@@ -163,6 +259,9 @@ load config and gene pool
 runs/
 └─ <run_id>/
    ├─ run_manifest.json
+   ├─ phase0/                         # only when Phase 0 enabled
+   │  ├─ reference_image_manifest.json
+   │  └─ style_gene_candidates.json
    ├─ generations.jsonl
    ├─ selections.jsonl
    ├─ candidates/
@@ -180,6 +279,8 @@ runs/
 輸出契約：
 
 - `run_manifest.json` 記錄 config hash、gene pool hash、run ID、run start time、backend type 與 spec version。
+- 若啟用 Phase 0，`phase0/reference_image_manifest.json` 記錄 reference image path、file hash、image size 與分析狀態。
+- 若啟用 Phase 0，`phase0/style_gene_candidates.json` 記錄從 reference images 抽取出的候選風格基因。
 - `generations.jsonl` 以 append-only 方式記錄每個完成的 generation event。
 - `selections.jsonl` 以 append-only 方式記錄每一代的 selected 與 rejected candidate IDs。
 - 每個 candidate metadata file 記錄 candidate ID、generation index、prompt text、gene IDs、seed、backend payload、image path 與 status。
@@ -200,6 +301,9 @@ runs/
 10. Export 預設只包含 selected candidates，除非 `export_policy.include_rejected` 為 `true`。
 11. Caption 必須包含 configured trigger word 與該 selected candidate 的 prompt gene text。
 12. 使用相同 config、gene pool、random seed、selection history 與 mock backend 時，必須產生等價 metadata。
+13. Phase 0 為 optional；未啟用時，run 不得要求 reference images。
+14. Phase 0 產生的是候選風格基因，不得未經合併流程直接覆蓋 `style_gene_pool.json`。
+15. Phase 0 candidate merge 只能使用 `rendering`、`color_light`、`texture_artifacts` 三個面向中的候選 genes。
 
 ## 不變條件
 
@@ -210,6 +314,8 @@ runs/
 - Selection history 必須是 append-only。
 - Export 不可覆蓋既有 dataset directory，除非 overwrite 被明確啟用。
 - Failed 或 incomplete candidates 不可被匯出為 positive training samples。
+- Phase 0 的每個候選 gene 必須能 trace back 到至少一張 reference image。
+- Phase 0 失敗不可破壞既有 `style_gene_pool.json`。
 
 ## 錯誤條件
 
@@ -221,6 +327,9 @@ runs/
 - Gene pool schema 無效。
 - Gene ID 重複。
 - Gene category 為空。
+- Phase 0 enabled 但 reference image directory 不存在。
+- Phase 0 enabled 但 reference image directory 中沒有支援的圖片格式。
+- Phase 0 candidate gene schema 無效。
 - Generation backend 不支援。
 - Generation backend failure。
 - Generation response 成功但 candidate image 不存在。
@@ -235,6 +344,14 @@ runs/
 
 給定有效 config 與 gene pool，profiler 接受它們並建立 run manifest。給定無效
 檔案時，profiler 必須在 generation 前失敗，並指出無效欄位。
+
+### AC-01A: Optional Phase 0 reference image analysis
+
+給定 `reference_image_analysis_policy.enabled = true` 與有效 reference images，
+profiler 必須產生 `phase0/reference_image_manifest.json` 與
+`phase0/style_gene_candidates.json`。候選 genes 必須被分入 `rendering`、
+`color_light`、`texture_artifacts` 三個面向，且每個候選 gene 都能追溯到至少
+一張 reference image。
 
 ### AC-02: Candidate generation
 
@@ -287,6 +404,10 @@ Test ID: T-AC01-invalid-config
 Spec Reference: AC-01
 Purpose: 在 generation 前拒絕無效 config。
 
+Test ID: T-AC01A-phase0-reference-analysis
+Spec Reference: AC-01A
+Purpose: 驗證 Phase 0 會輸出三面向候選 genes，且每個 gene 可追溯 reference image。
+
 Test ID: T-AC02-candidate-count
 Spec Reference: AC-02
 Purpose: 確認 generation 建立剛好等於設定值的 candidate count。
@@ -320,15 +441,19 @@ Purpose: 確認 export 預設不覆蓋既有輸出。
 
 - Config validation unit tests。
 - Gene pool validation unit tests。
+- Phase 0 candidate gene schema unit tests。
 - Selection validation unit tests。
 - Crossover / mutation unit tests。
 - Caption composition unit tests。
+- Mock Phase 0 reference-image analysis integration test。
 - Mock backend full-flow integration test。
 - Dataset export integration test。
 
 ## Open Questions
 
 - 第一個 real generation backend 應優先實作 Stable Diffusion WebUI、ComfyUI 還是 Diffusers？
+- Phase 0 第一版應使用哪種 image analysis 實作：CLIP embedding、captioner、vision model prompt、手動標註，還是混合流程？
+- Phase 0 候選 genes 是否需要 human approval 後才可合併到 `style_gene_pool.json`？
 - 第一版使用者介面應該是 CLI、local web UI、notebook，還是 file-based review？
 - LoRA training 有意義前，最少需要多少 selected images？
 - `v0.1.0` 是否只支援 manual convergence，或要暴露早期 convergence signal？

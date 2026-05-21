@@ -11,6 +11,8 @@ Style Fit Profiler 是一個用來探索、收斂並固定個人 AI 視覺風格
 ## 核心概念
 
 ```text
+Phase 0（optional）：從既有圖片抽取候選風格基因
+  ↓
 Phase 1：互動式風格探索
   ↓
 Phase 2：候選風格收斂與資料集整理
@@ -23,7 +25,7 @@ Phase 4：個人風格 LoRA 微調與驗證
 在這個專案中，`style_profile` 不是單一 prompt 或單張參考圖，而是以下資料的組合：
 
 ```text
-style_profile = prompt genes + seed genes + visual preferences + selected images + rejected images + tagging policy + LoRA training config
+style_profile = reference images + extracted candidate genes + prompt genes + seed genes + visual preferences + selected images + rejected images + tagging policy + LoRA training config
 ```
 
 使用者不需要先定義美術理論或風格關鍵字，只需要在每一輪從多張候選圖中選出喜歡的結果。系統會把這些偏好轉換成下一輪生成條件，讓風格逐步往使用者的潛在審美收斂。
@@ -32,10 +34,13 @@ style_profile = prompt genes + seed genes + visual preferences + selected images
 
 ```text
 style-fit-profiler/
+├─ phase0-style-gene-extractor.py    # Phase 0：從既有圖片抽取候選風格基因（optional）
 ├─ phase1-style-evolution.py         # Phase 1：互動式候選圖生成與偏好選擇
 ├─ phase2-dataset-curator.py         # Phase 2：整理入選圖片、去重、品質篩選
 ├─ phase3-lora-exporter.py           # Phase 3：輸出 LoRA 訓練資料與 caption
 ├─ phase4-style-validator.py         # Phase 4：用驗證 prompt 測試 LoRA 穩定性
+├─ reference_images/                 # Phase 0 optional input：使用者已喜歡的既有圖片
+├─ style_gene_candidates.json        # Phase 0 optional output：待審查 / 合併的候選風格基因
 ├─ style_profiler_config.json        # 主設定：模型、prompt genes、selection policy、export policy
 ├─ style_gene_pool.json              # 可演化的風格基因：媒材、線條、色彩、構圖等
 ├─ style_validation_prompts.json     # LoRA 完成後的驗證題組
@@ -47,6 +52,25 @@ style-fit-profiler/
 目前此 module 仍在設計階段，檔案結構會隨實作逐步補齊。
 
 ## 預期流程
+
+### Phase 0（optional）：從既有圖片抽取候選風格基因
+
+如果使用者已經有一批喜歡的既有圖片，Phase 0 可以先從這些圖片抽取候選風格基因，作為 Phase 1 的初始 gene pool 來源。
+
+Phase 0 預期分成三個面向：
+
+1. 渲染與技法（Rendering）
+2. 色彩與光效（Color & Light）
+3. 材質與雜訊（Texture & Artifacts）
+
+預期功能：
+
+- 掃描 `reference_images/` 中的既有圖片
+- 建立 reference image manifest
+- 從圖片中抽取候選 prompt genes
+- 依 Rendering、Color & Light、Texture & Artifacts 三面向分類
+- 輸出 `style_gene_candidates.json`
+- 讓使用者審查、刪改或合併候選 genes 到 `style_gene_pool.json`
 
 ### Phase 1：互動式風格探索
 
@@ -115,6 +139,7 @@ Phase 4 會使用固定驗證 prompt 檢查 LoRA 是否真的學到穩定風格�
 
 - `generation_model`
 - `image_size`
+- `reference_image_analysis_policy`
 - `candidates_per_generation`
 - `max_generations`
 - `mutation_rate`
@@ -127,6 +152,9 @@ Phase 4 會使用固定驗證 prompt 檢查 LoRA 是否真的學到穩定風格�
 
 放可被演化流程抽樣與重組的風格基因，例如：
 
+- rendering
+- color_light
+- texture_artifacts
 - medium
 - color palette
 - line quality
@@ -157,7 +185,10 @@ Colab 版本可作為早期實驗環境；本地版本會優先考慮可重現�
 第一版目標是建立一條最小可用流程：
 
 ```text
-generate candidates
+optional reference image analysis
+  → extract candidate style genes
+  → review / merge gene candidates
+  → generate candidates
   → user selection
   → evolve prompt / seed genes
   → export selected images
@@ -183,6 +214,7 @@ generate candidates
 
 Possible next steps:
 
+- 建立 optional Phase 0 既有圖片風格基因抽取流程
 - 建立互動式候選圖選擇介面
 - 設計第一版 `style_gene_pool.json`
 - 記錄每一代圖片、基因與使用者選擇
@@ -197,7 +229,7 @@ Possible next steps:
 ## Version Direction
 
 ```text
-v0.1.0  Interactive style exploration MVP
+v0.1.0  Optional reference-image bootstrap and interactive style exploration MVP
 v0.2.0  Dataset curation and LoRA export
 v0.3.0  LoRA validation and style profile report
 v0.4.0  Multi-profile comparison and versioning
