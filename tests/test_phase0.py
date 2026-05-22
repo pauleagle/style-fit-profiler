@@ -19,6 +19,7 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     STYLE_GENE_CANDIDATES_VERSION,
     StyleGeneCandidate,
     build_style_gene_candidates_document,
+    deterministic_mock_phase0_extractor,
     discover_reference_images,
     extract_style_gene_candidates,
     run_phase0,
@@ -482,6 +483,49 @@ class ExtractorInterfaceTests(unittest.TestCase):
         self.assertEqual(
             candidates_by_aspect["rendering"][0].id,
             "rendering_mock_ref_001",
+        )
+
+
+class DeterministicMockExtractorTests(unittest.TestCase):
+    def test_p0_08_mock_extractor_returns_equivalent_candidates_for_same_input(self):
+        manifest_records = (
+            {
+                "path": "reference_images/ref-002.png",
+                "file_hash": "sha256:def",
+                "image_size": {"width": 4, "height": 5},
+                "analysis_status": "pending",
+            },
+            {
+                "path": "reference_images/ref-001.png",
+                "file_hash": "sha256:abc",
+                "image_size": {"width": 2, "height": 3},
+                "analysis_status": "pending",
+            },
+        )
+
+        first_document = build_style_gene_candidates_document(
+            candidates_by_aspect=deterministic_mock_phase0_extractor(manifest_records)
+        )
+        second_document = build_style_gene_candidates_document(
+            candidates_by_aspect=deterministic_mock_phase0_extractor(manifest_records)
+        )
+
+        validate_style_gene_candidates_document(first_document)
+        self.assertEqual(first_document, second_document)
+        self.assertEqual(
+            [record["source_images"] for record in first_document["aspects"]["rendering"]],
+            [["reference_images/ref-001.png"], ["reference_images/ref-002.png"]],
+        )
+        self.assertEqual(
+            {
+                aspect: len(candidates)
+                for aspect, candidates in first_document["aspects"].items()
+            },
+            {
+                "rendering": 2,
+                "color_light": 2,
+                "texture_artifacts": 2,
+            },
         )
 
 

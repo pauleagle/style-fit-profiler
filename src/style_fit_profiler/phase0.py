@@ -35,6 +35,11 @@ STYLE_GENE_CANDIDATE_FIELDS = (
     "source_images",
     "notes",
 )
+MOCK_EXTRACTOR_PROMPTS_BY_ASPECT = {
+    "rendering": "mock rendering traits",
+    "color_light": "mock color and light traits",
+    "texture_artifacts": "mock texture and artifact traits",
+}
 
 
 class Phase0Error(RuntimeError):
@@ -104,6 +109,59 @@ def extract_style_gene_candidates(
         aspect: tuple(candidates)
         for aspect, candidates in extractor(reference_image_manifest_records).items()
     }
+
+
+def deterministic_mock_phase0_extractor(
+    reference_image_manifest_records: Sequence[ReferenceImageManifestRecord],
+) -> dict[str, tuple[StyleGeneCandidate, ...]]:
+    """Build deterministic P0-08 candidate genes from manifest records."""
+
+    candidates_by_aspect: dict[str, list[StyleGeneCandidate]] = {
+        aspect: [] for aspect in STYLE_GENE_CANDIDATE_ASPECTS
+    }
+
+    for record in sorted(reference_image_manifest_records, key=_manifest_record_sort_key):
+        source_image = _manifest_record_path(record)
+        source_token = _style_gene_id_token(source_image)
+        source_label = source_token.replace("_", " ")
+        source_digest = hashlib.sha256(source_image.encode("utf-8")).hexdigest()[:8]
+
+        for aspect_index, aspect in enumerate(STYLE_GENE_CANDIDATE_ASPECTS):
+            candidates_by_aspect[aspect].append(
+                StyleGeneCandidate(
+                    id=f"{aspect}_{source_token}_{source_digest}",
+                    prompt=f"{MOCK_EXTRACTOR_PROMPTS_BY_ASPECT[aspect]} from {source_label}",
+                    confidence=round(0.55 + (aspect_index * 0.05), 2),
+                    source_images=(source_image,),
+                    notes="deterministic mock extractor",
+                )
+            )
+
+    return {
+        aspect: tuple(candidates)
+        for aspect, candidates in candidates_by_aspect.items()
+    }
+
+
+def _manifest_record_sort_key(record: ReferenceImageManifestRecord) -> str:
+    return _manifest_record_path(record).casefold()
+
+
+def _manifest_record_path(record: ReferenceImageManifestRecord) -> str:
+    path = record.get("path")
+    if not isinstance(path, str) or not path.strip():
+        raise Phase0Error("reference image manifest record must include a relative path")
+    return path
+
+
+def _style_gene_id_token(source_image: str) -> str:
+    stem = PurePosixPath(source_image.replace("\\", "/")).stem
+    token_characters = [
+        character.lower() if character.isalnum() else "_"
+        for character in stem
+    ]
+    token = "_".join("".join(token_characters).split("_"))
+    return token or "reference_image"
 
 
 def build_style_gene_candidates_document(
