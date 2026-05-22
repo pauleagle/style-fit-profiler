@@ -619,6 +619,8 @@ Validation requirements：
 Candidate experimental atomic items：
 
 - `EXP-001A`: Gemini response parser
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；fixture tests 覆蓋 valid JSON、invalid JSON、missing aspect、unknown key、非 list traits、空白 / 非字串 trait 與 invalid notes。
   - 將 Gemini JSON text parse 成三面向 traits。
   - 拒絕 invalid JSON、missing aspect、unknown aspect 或非 list traits。
 - `EXP-001B`: Gemini trait-to-candidate mapper

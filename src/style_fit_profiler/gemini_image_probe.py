@@ -19,6 +19,12 @@ GEMINI_GENERATE_CONTENT_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 MAX_INLINE_IMAGE_BYTES = 19 * 1024 * 1024
+GEMINI_TRAIT_ASPECTS = (
+    "rendering",
+    "color_light",
+    "texture_artifacts",
+)
+GEMINI_TRAIT_RESPONSE_KEYS = frozenset((*GEMINI_TRAIT_ASPECTS, "notes"))
 
 DEFAULT_ANALYSIS_PROMPT = """Analyze this local reference image for a style-fit profiler.
 
@@ -40,6 +46,52 @@ Rules:
 
 class GeminiImageProbeError(RuntimeError):
     """Raised when the Gemini image probe cannot complete."""
+
+
+def parse_gemini_trait_response(response_text: str) -> dict[str, tuple[str, ...]]:
+    """Parse EXP-001A Gemini JSON text into normalized aspect traits."""
+
+    try:
+        response = json.loads(response_text)
+    except json.JSONDecodeError as error:
+        raise GeminiImageProbeError(f"invalid Gemini trait JSON: {error.msg}") from error
+
+    if not isinstance(response, Mapping):
+        raise GeminiImageProbeError("Gemini trait response must be a JSON object")
+
+    unknown_keys = sorted(set(response) - GEMINI_TRAIT_RESPONSE_KEYS)
+    if unknown_keys:
+        raise GeminiImageProbeError(f"Gemini trait response unknown key: {', '.join(unknown_keys)}")
+
+    if "notes" in response and not isinstance(response["notes"], str):
+        raise GeminiImageProbeError("Gemini trait response notes must be a string")
+
+    traits_by_aspect: dict[str, tuple[str, ...]] = {}
+    for aspect in GEMINI_TRAIT_ASPECTS:
+        if aspect not in response:
+            raise GeminiImageProbeError(f"Gemini trait response missing aspect: {aspect}")
+
+        aspect_traits = response[aspect]
+        if isinstance(aspect_traits, str) or not isinstance(aspect_traits, list):
+            raise GeminiImageProbeError(f"Gemini trait response aspect must be a list: {aspect}")
+
+        traits_by_aspect[aspect] = tuple(
+            _normalize_gemini_trait(trait=trait, aspect=aspect)
+            for trait in aspect_traits
+        )
+
+    return traits_by_aspect
+
+
+def _normalize_gemini_trait(*, trait: Any, aspect: str) -> str:
+    if not isinstance(trait, str):
+        raise GeminiImageProbeError(f"Gemini trait must be a string: {aspect}")
+
+    normalized_trait = trait.strip()
+    if not normalized_trait:
+        raise GeminiImageProbeError(f"Gemini trait must be non-empty: {aspect}")
+
+    return normalized_trait
 
 
 def guess_image_mime_type(image_path: Path) -> str:
