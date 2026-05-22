@@ -52,6 +52,7 @@ class Phase0Status(str, Enum):
     SKIPPED = "skipped"
     REFERENCE_IMAGES_DISCOVERED = "reference_images_discovered"
     REFERENCE_IMAGE_MANIFEST_WRITTEN = "reference_image_manifest_written"
+    PHASE0_OUTPUT_WRITTEN = "phase0_output_written"
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,7 @@ class Phase0Result:
     reason: str
     reference_image_paths: tuple[str, ...] = ()
     reference_image_manifest_path: str | None = None
+    style_gene_candidates_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -310,8 +312,8 @@ def run_phase0(
 ) -> Phase0Result:
     """Run Phase 0 according to the provided policy.
 
-    P0-02 only defines the disabled path. Image discovery and extractor
-    invocation are intentionally deferred to later atomic items.
+    Disabled policies return before filesystem checks. Enabled policies write
+    the Phase 0 manifest and candidate gene outputs.
     """
 
     if not policy.enabled:
@@ -324,17 +326,108 @@ def run_phase0(
         project_root=project_root,
         input_dir=policy.input_dir,
     )
-    reference_image_manifest_path = write_reference_image_manifest(
+
+    reference_image_manifest_records = build_reference_image_manifest_records(
         project_root=project_root,
-        run_dir=run_dir,
         reference_image_paths=reference_image_paths,
+    )
+    reference_image_manifest_path = write_reference_image_manifest_document(
+        run_dir=run_dir,
+        reference_image_manifest_records=reference_image_manifest_records,
+    )
+    candidate_extractor = extractor or deterministic_mock_phase0_extractor
+    candidates_by_aspect = extract_style_gene_candidates(
+        extractor=candidate_extractor,
+        reference_image_manifest_records=reference_image_manifest_records,
+    )
+    style_gene_candidates_path = write_style_gene_candidates(
+        run_dir=run_dir,
+        candidates_by_aspect=candidates_by_aspect,
     )
 
     return Phase0Result(
-        status=Phase0Status.REFERENCE_IMAGE_MANIFEST_WRITTEN,
-        reason="reference image manifest written",
+        status=Phase0Status.PHASE0_OUTPUT_WRITTEN,
+        reason="phase0 output written",
         reference_image_paths=reference_image_paths,
         reference_image_manifest_path=reference_image_manifest_path,
+        style_gene_candidates_path=style_gene_candidates_path,
+    )
+
+
+def build_reference_image_manifest_records(
+    *,
+    project_root: Path,
+    reference_image_paths: tuple[str, ...],
+) -> tuple[dict[str, Any], ...]:
+    """Build P0-04 manifest records for discovered reference images."""
+
+    return tuple(
+        _build_reference_image_manifest_record(
+            project_root=project_root,
+            reference_image_path=reference_image_path,
+        )
+        for reference_image_path in reference_image_paths
+    )
+
+
+def write_reference_image_manifest(
+    *,
+    project_root: Path,
+    run_dir: Path,
+    reference_image_paths: tuple[str, ...],
+) -> str:
+    """Write the P0-04 reference image manifest and return its run-relative path."""
+
+    return write_reference_image_manifest_document(
+        run_dir=run_dir,
+        reference_image_manifest_records=build_reference_image_manifest_records(
+            project_root=project_root,
+            reference_image_paths=reference_image_paths,
+        ),
+    )
+
+
+def write_reference_image_manifest_document(
+    *,
+    run_dir: Path,
+    reference_image_manifest_records: Sequence[ReferenceImageManifestRecord],
+) -> str:
+    """Write a reference image manifest from prebuilt manifest records."""
+
+    manifest = {
+        "version": "0.1.0",
+        "source": "phase0_reference_image_analysis",
+        "images": list(reference_image_manifest_records),
+    }
+
+    manifest_path = run_dir / "phase0" / "reference_image_manifest.json"
+    _write_json_file(manifest_path, manifest)
+    return manifest_path.relative_to(run_dir).as_posix()
+
+
+def write_style_gene_candidates(
+    *,
+    run_dir: Path,
+    candidates_by_aspect: Mapping[str, Sequence[StyleGeneCandidate]],
+) -> str:
+    """Write P0-10 style gene candidates and return the run-relative path."""
+
+    validate_style_gene_candidate_aspects(candidates_by_aspect)
+    document = build_style_gene_candidates_document(
+        candidates_by_aspect=candidates_by_aspect
+    )
+    validate_style_gene_candidates_document(document)
+
+    candidates_path = run_dir / "phase0" / "style_gene_candidates.json"
+    _write_json_file(candidates_path, document)
+    return candidates_path.relative_to(run_dir).as_posix()
+
+
+def _write_json_file(path: Path, document: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(document, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
 
 
@@ -364,35 +457,6 @@ def discover_reference_images(*, project_root: Path, input_dir: str) -> tuple[st
         raise Phase0Error(f"no supported reference images found in: {input_dir}")
 
     return image_paths
-
-
-def write_reference_image_manifest(
-    *,
-    project_root: Path,
-    run_dir: Path,
-    reference_image_paths: tuple[str, ...],
-) -> str:
-    """Write the P0-04 reference image manifest and return its run-relative path."""
-
-    manifest = {
-        "version": "0.1.0",
-        "source": "phase0_reference_image_analysis",
-        "images": [
-            _build_reference_image_manifest_record(
-                project_root=project_root,
-                reference_image_path=reference_image_path,
-            )
-            for reference_image_path in reference_image_paths
-        ],
-    }
-
-    manifest_path = run_dir / "phase0" / "reference_image_manifest.json"
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    return manifest_path.relative_to(run_dir).as_posix()
 
 
 def _build_reference_image_manifest_record(

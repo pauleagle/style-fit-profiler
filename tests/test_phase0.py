@@ -233,11 +233,15 @@ class ReferenceImageManifestTests(unittest.TestCase):
 
             manifest_path = run_dir / "phase0" / "reference_image_manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            candidate_output_exists = (
+                run_dir / "phase0" / "style_gene_candidates.json"
+            ).is_file()
 
-        self.assertEqual(result.status, Phase0Status.REFERENCE_IMAGE_MANIFEST_WRITTEN)
+        self.assertEqual(result.status, Phase0Status.PHASE0_OUTPUT_WRITTEN)
         self.assertEqual(result.reference_image_paths, ("reference_images/a.png", "reference_images/b.JPG"))
         self.assertEqual(result.reference_image_manifest_path, "phase0/reference_image_manifest.json")
-        self.assertEqual(result.reason, "reference image manifest written")
+        self.assertEqual(result.style_gene_candidates_path, "phase0/style_gene_candidates.json")
+        self.assertEqual(result.reason, "phase0 output written")
         self.assertEqual(
             manifest,
             {
@@ -259,7 +263,7 @@ class ReferenceImageManifestTests(unittest.TestCase):
                 ],
             },
         )
-        self.assertFalse((run_dir / "phase0" / "style_gene_candidates.json").exists())
+        self.assertTrue(candidate_output_exists)
 
     def test_p0_04_manifest_reads_image_size_for_supported_formats(self):
         fixtures = {
@@ -609,6 +613,107 @@ class AspectClassificationTests(unittest.TestCase):
 
         with self.assertRaisesRegex(Phase0Error, "candidate gene id prefix"):
             validate_style_gene_candidate_aspects(candidates_by_aspect)
+
+
+class Phase0OutputWriterTests(unittest.TestCase):
+    def test_p0_10_enabled_policy_writes_manifest_and_candidate_gene_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "run-001"
+            reference_dir.mkdir()
+            png_bytes = _png_header_bytes(width=2, height=3)
+            (reference_dir / "a.png").write_bytes(png_bytes)
+
+            result = run_phase0(
+                policy=ReferenceImageAnalysisPolicy(enabled=True),
+                project_root=project_root,
+                run_dir=run_dir,
+            )
+
+            manifest = json.loads(
+                (run_dir / "phase0" / "reference_image_manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            candidate_document = json.loads(
+                (run_dir / "phase0" / "style_gene_candidates.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(result.status, Phase0Status.PHASE0_OUTPUT_WRITTEN)
+        self.assertEqual(result.reason, "phase0 output written")
+        self.assertEqual(result.reference_image_manifest_path, "phase0/reference_image_manifest.json")
+        self.assertEqual(result.style_gene_candidates_path, "phase0/style_gene_candidates.json")
+        self.assertEqual(
+            manifest["images"][0],
+            {
+                "path": "reference_images/a.png",
+                "file_hash": _sha256_digest(png_bytes),
+                "image_size": {"width": 2, "height": 3},
+                "analysis_status": "pending",
+            },
+        )
+        validate_style_gene_candidates_document(candidate_document)
+        self.assertEqual(
+            candidate_document["aspects"]["rendering"][0]["source_images"],
+            ["reference_images/a.png"],
+        )
+
+    def test_p0_10_enabled_policy_writes_custom_extractor_candidates(self):
+        extractor_inputs = []
+
+        def extractor(reference_image_manifest_records):
+            extractor_inputs.append(tuple(reference_image_manifest_records))
+            return {
+                "rendering": (
+                    StyleGeneCandidate(
+                        id="rendering_custom_ref_001",
+                        prompt="custom rendering trait",
+                        confidence=0.7,
+                        source_images=("reference_images/a.png",),
+                        notes="custom extractor",
+                    ),
+                ),
+                "color_light": (),
+                "texture_artifacts": (),
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "run-001"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+
+            run_phase0(
+                policy=ReferenceImageAnalysisPolicy(enabled=True),
+                project_root=project_root,
+                run_dir=run_dir,
+                extractor=extractor,
+            )
+
+            candidate_document = json.loads(
+                (run_dir / "phase0" / "style_gene_candidates.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(
+            [record["path"] for record in extractor_inputs[0]],
+            ["reference_images/a.png"],
+        )
+        self.assertEqual(
+            candidate_document["aspects"]["rendering"][0],
+            {
+                "id": "rendering_custom_ref_001",
+                "prompt": "custom rendering trait",
+                "confidence": 0.7,
+                "source_images": ["reference_images/a.png"],
+                "notes": "custom extractor",
+            },
+        )
 
 
 if __name__ == "__main__":
