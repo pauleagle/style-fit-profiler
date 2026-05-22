@@ -5,7 +5,7 @@
 - 目標版本：`v0.1.0`
 - 版本名稱：Optional reference-image bootstrap + interactive style exploration MVP
 - 規格狀態：Draft
-- 最後更新：2026-05-21
+- 最後更新：2026-05-22
 
 本文件是 `style-fit-profiler` 的實作與驗證契約。README 負責說明概念、
 用途與 roadmap；本 spec 負責定義目前版本目標中哪些行為必須被實作、測試
@@ -504,6 +504,30 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 - human approval UI。
 - candidate genes 合併到 `style_gene_pool.json` 的互動流程。
 - reference image 的版權、作者、流派或資料來源判定。
+
+## Backlog
+
+### CR-001: Appeal Point and Art Style Extraction
+
+狀態：Backlog，限 Phase 0 baseline 完成並驗證後再評估。
+
+Intent：
+
+- 擴充 reference image analysis，從既有圖片抽取 appeal points、visual charm factors、art style traits、impression colors 與 reusable visual genes。
+- 將 Phase 0 從單純候選風格基因抽取，延伸成後續 mutation、recombination 與 style-fit profiling 可使用的 style / profile seed generator。
+
+Do not include in current P0：
+
+- 本 CR 不得修改目前 P0 atomic tasks。
+- 必須等 P0 baseline 完成、驗證通過後，才可拆分新的 implementation steps、schema 變更或 acceptance criteria。
+
+預期分析面向：
+
+- Style / Technique：art style traits、brushwork、linework、shading、rendering density。
+- Color / Mood：impression colors、palette、contrast、temperature、saturation。
+- Appearance / Character Design：facial features、hairstyle、outfit motifs、silhouette、accessories。
+- Appeal / Charm：appeal points、visual charm factors、emotional impression、memorability。
+- Reusable Genes：normalized visual traits、recombinable design tokens、stable identity anchors。
 
 ## Testing Implications
 
