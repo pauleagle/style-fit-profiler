@@ -452,7 +452,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-05: Candidate gene schema
 
-狀態：未實作。
+狀態：已完成。
+完成依據：baseline tests 通過；focused mutation review 已殺掉 P0-05 schema key / field 變異。
 
 - 定義 `style_gene_candidates.json` schema。
 - `aspects` 必須包含 `rendering`、`color_light`、`texture_artifacts`。

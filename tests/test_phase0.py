@@ -13,6 +13,12 @@ from style_fit_profiler.config import ReferenceImageAnalysisPolicy  # noqa: E402
 from style_fit_profiler.phase0 import (  # noqa: E402
     Phase0Error,
     Phase0Status,
+    STYLE_GENE_CANDIDATE_ASPECTS,
+    STYLE_GENE_CANDIDATE_FIELDS,
+    STYLE_GENE_CANDIDATES_SOURCE,
+    STYLE_GENE_CANDIDATES_VERSION,
+    StyleGeneCandidate,
+    build_style_gene_candidates_document,
     discover_reference_images,
     run_phase0,
 )
@@ -283,6 +289,49 @@ class ReferenceImageManifestTests(unittest.TestCase):
         self.assertEqual(
             image_sizes,
             {relative_path: image_size for relative_path, (_, image_size) in fixtures.items()},
+        )
+
+
+class CandidateGeneSchemaTests(unittest.TestCase):
+    def test_p0_05_candidate_document_declares_required_aspects(self):
+        document = build_style_gene_candidates_document()
+
+        self.assertEqual(document["version"], STYLE_GENE_CANDIDATES_VERSION)
+        self.assertEqual(document["source"], STYLE_GENE_CANDIDATES_SOURCE)
+        self.assertEqual(tuple(document["aspects"]), STYLE_GENE_CANDIDATE_ASPECTS)
+        self.assertEqual(
+            document["aspects"],
+            {
+                "rendering": [],
+                "color_light": [],
+                "texture_artifacts": [],
+            },
+        )
+
+    def test_p0_05_candidate_record_contains_spec_fields(self):
+        candidate = StyleGeneCandidate(
+            id="rendering_soft_airbrush_edges",
+            prompt="soft airbrushed edges",
+            confidence=0.72,
+            source_images=("reference_images/ref-001.png",),
+            notes="",
+        )
+
+        document = build_style_gene_candidates_document(
+            candidates_by_aspect={"rendering": (candidate,)}
+        )
+        record = document["aspects"]["rendering"][0]
+
+        self.assertEqual(tuple(record), STYLE_GENE_CANDIDATE_FIELDS)
+        self.assertEqual(
+            record,
+            {
+                "id": "rendering_soft_airbrush_edges",
+                "prompt": "soft airbrushed edges",
+                "confidence": 0.72,
+                "source_images": ["reference_images/ref-001.png"],
+                "notes": "",
+            },
         )
 
 

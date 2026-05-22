@@ -7,9 +7,9 @@ from enum import Enum
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping, Sequence
 
-from .config import ReferenceImageAnalysisPolicy
+from .config import ALLOWED_REFERENCE_IMAGE_ASPECTS, ReferenceImageAnalysisPolicy
 
 
 SUPPORTED_REFERENCE_IMAGE_EXTENSIONS = frozenset(
@@ -23,6 +23,17 @@ SUPPORTED_REFERENCE_IMAGE_EXTENSIONS = frozenset(
         ".tiff",
         ".webp",
     }
+)
+
+STYLE_GENE_CANDIDATES_VERSION = "0.1.0"
+STYLE_GENE_CANDIDATES_SOURCE = "phase0_reference_image_analysis"
+STYLE_GENE_CANDIDATE_ASPECTS = ALLOWED_REFERENCE_IMAGE_ASPECTS
+STYLE_GENE_CANDIDATE_FIELDS = (
+    "id",
+    "prompt",
+    "confidence",
+    "source_images",
+    "notes",
 )
 
 
@@ -48,7 +59,48 @@ class Phase0Result:
     reference_image_manifest_path: str | None = None
 
 
+@dataclass(frozen=True)
+class StyleGeneCandidate:
+    """Schema record for one Phase 0 candidate style gene."""
+
+    id: str
+    prompt: str
+    confidence: float
+    source_images: tuple[str, ...]
+    notes: str = ""
+
+    def to_json_record(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "prompt": self.prompt,
+            "confidence": self.confidence,
+            "source_images": list(self.source_images),
+            "notes": self.notes,
+        }
+
+
 Phase0Extractor = Callable[..., Any]
+
+
+def build_style_gene_candidates_document(
+    *,
+    candidates_by_aspect: Mapping[str, Sequence[StyleGeneCandidate]] | None = None,
+) -> dict[str, Any]:
+    """Build the P0-05 style_gene_candidates.json document shape."""
+
+    candidates_by_aspect = candidates_by_aspect or {}
+
+    return {
+        "version": STYLE_GENE_CANDIDATES_VERSION,
+        "source": STYLE_GENE_CANDIDATES_SOURCE,
+        "aspects": {
+            aspect: [
+                candidate.to_json_record()
+                for candidate in candidates_by_aspect.get(aspect, ())
+            ]
+            for aspect in STYLE_GENE_CANDIDATE_ASPECTS
+        },
+    }
 
 
 def run_phase0(
