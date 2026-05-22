@@ -13,6 +13,7 @@ from .phase0 import (
     STYLE_GENE_CANDIDATES_VERSION,
     StyleGeneCandidate,
     build_style_gene_candidates_document,
+    validate_style_gene_candidates_document,
 )
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "StyleGeneCandidate",
     "build_style_gene_candidates_document",
     "run_phase0",
+    "validate_style_gene_candidates_document",
 ]

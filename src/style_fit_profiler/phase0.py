@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable, Mapping, Sequence
 
 from .config import ALLOWED_REFERENCE_IMAGE_ASPECTS, ReferenceImageAnalysisPolicy
@@ -101,6 +101,88 @@ def build_style_gene_candidates_document(
             for aspect in STYLE_GENE_CANDIDATE_ASPECTS
         },
     }
+
+
+def validate_style_gene_candidates_document(document: Mapping[str, Any]) -> None:
+    """Validate a P0-06 candidate gene document."""
+
+    if not isinstance(document, Mapping):
+        raise Phase0Error("Phase 0 candidate gene schema invalid: document must be an object")
+
+    aspects = document.get("aspects")
+    if not isinstance(aspects, Mapping):
+        raise Phase0Error("Phase 0 candidate gene schema invalid: aspects must be an object")
+
+    seen_ids: set[str] = set()
+    for aspect in STYLE_GENE_CANDIDATE_ASPECTS:
+        if aspect not in aspects:
+            raise Phase0Error(f"Phase 0 candidate gene schema invalid: missing aspect: {aspect}")
+
+    for aspect, candidates in aspects.items():
+        if isinstance(candidates, str) or not isinstance(candidates, Sequence):
+            raise Phase0Error(
+                f"Phase 0 candidate gene schema invalid: aspect must contain a list: {aspect}"
+            )
+
+        for candidate in candidates:
+            _validate_candidate_gene_record(candidate, seen_ids)
+
+
+def _validate_candidate_gene_record(candidate: Any, seen_ids: set[str]) -> None:
+    if not isinstance(candidate, Mapping):
+        raise Phase0Error("Phase 0 candidate gene schema invalid: candidate must be an object")
+
+    missing_fields = [field for field in STYLE_GENE_CANDIDATE_FIELDS if field not in candidate]
+    if missing_fields:
+        fields = ", ".join(missing_fields)
+        raise Phase0Error(f"Phase 0 candidate gene schema invalid: missing candidate field: {fields}")
+
+    candidate_id = candidate["id"]
+    if not isinstance(candidate_id, str) or not candidate_id.strip():
+        raise Phase0Error("Phase 0 candidate gene schema invalid: candidate id must be non-empty")
+    if candidate_id in seen_ids:
+        raise Phase0Error(f"Phase 0 candidate gene schema invalid: duplicate candidate gene id: {candidate_id}")
+    seen_ids.add(candidate_id)
+
+    prompt = candidate["prompt"]
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise Phase0Error("Phase 0 candidate gene schema invalid: prompt must be non-empty")
+
+    confidence = candidate["confidence"]
+    if type(confidence) not in {int, float} or not 0 <= confidence <= 1:
+        raise Phase0Error("Phase 0 candidate gene schema invalid: confidence must be between 0 and 1")
+
+    _validate_source_images(candidate["source_images"])
+
+    notes = candidate["notes"]
+    if not isinstance(notes, str):
+        raise Phase0Error("Phase 0 candidate gene schema invalid: notes must be a string")
+
+
+def _validate_source_images(source_images: Any) -> None:
+    if (
+        isinstance(source_images, str)
+        or not isinstance(source_images, Sequence)
+        or not source_images
+    ):
+        raise Phase0Error(
+            "Phase 0 candidate gene schema invalid: source_images must contain at least one relative path"
+        )
+
+    for source_image in source_images:
+        if not isinstance(source_image, str) or not source_image.strip():
+            raise Phase0Error(
+                "Phase 0 candidate gene schema invalid: source_images must contain relative paths"
+            )
+        windows_path = PureWindowsPath(source_image)
+        if (
+            PurePosixPath(source_image).is_absolute()
+            or bool(windows_path.drive)
+            or bool(windows_path.root)
+        ):
+            raise Phase0Error(
+                "Phase 0 candidate gene schema invalid: source_images must contain relative paths"
+            )
 
 
 def run_phase0(

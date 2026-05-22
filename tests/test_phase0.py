@@ -21,6 +21,7 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     build_style_gene_candidates_document,
     discover_reference_images,
     run_phase0,
+    validate_style_gene_candidates_document,
 )
 
 
@@ -333,6 +334,113 @@ class CandidateGeneSchemaTests(unittest.TestCase):
                 "notes": "",
             },
         )
+
+
+def _valid_style_gene_candidates_document():
+    return build_style_gene_candidates_document(
+        candidates_by_aspect={
+            "rendering": (
+                StyleGeneCandidate(
+                    id="rendering_soft_airbrush_edges",
+                    prompt="soft airbrushed edges",
+                    confidence=0.72,
+                    source_images=("reference_images/ref-001.png",),
+                    notes="",
+                ),
+            ),
+            "color_light": (
+                StyleGeneCandidate(
+                    id="color_light_muted_cyan_rose",
+                    prompt="muted cyan and rose palette",
+                    confidence=0,
+                    source_images=("reference_images/ref-001.png",),
+                    notes="",
+                ),
+            ),
+            "texture_artifacts": (
+                StyleGeneCandidate(
+                    id="texture_artifacts_paper_grain",
+                    prompt="subtle paper grain texture",
+                    confidence=1,
+                    source_images=("reference_images/ref-002.png",),
+                    notes="",
+                ),
+            ),
+        }
+    )
+
+
+class CandidateGeneValidatorTests(unittest.TestCase):
+    def test_p0_06_accepts_valid_candidate_document(self):
+        validate_style_gene_candidates_document(_valid_style_gene_candidates_document())
+
+    def test_p0_06_rejects_missing_required_schema_parts(self):
+        document = _valid_style_gene_candidates_document()
+        del document["aspects"]["texture_artifacts"]
+
+        with self.assertRaisesRegex(Phase0Error, "missing aspect"):
+            validate_style_gene_candidates_document(document)
+
+        document = _valid_style_gene_candidates_document()
+        del document["aspects"]["rendering"][0]["notes"]
+
+        with self.assertRaisesRegex(Phase0Error, "missing candidate field"):
+            validate_style_gene_candidates_document(document)
+
+    def test_p0_06_rejects_duplicate_candidate_ids_across_file(self):
+        document = _valid_style_gene_candidates_document()
+        document["aspects"]["color_light"][0]["id"] = "rendering_soft_airbrush_edges"
+
+        with self.assertRaisesRegex(Phase0Error, "duplicate candidate gene id"):
+            validate_style_gene_candidates_document(document)
+
+        document = _valid_style_gene_candidates_document()
+        document["aspects"]["experimental"] = [
+            {
+                "id": "rendering_soft_airbrush_edges",
+                "prompt": "extra aspect should still be scanned",
+                "confidence": 0.5,
+                "source_images": ["reference_images/ref-001.png"],
+                "notes": "",
+            }
+        ]
+
+        with self.assertRaisesRegex(Phase0Error, "duplicate candidate gene id"):
+            validate_style_gene_candidates_document(document)
+
+    def test_p0_06_rejects_blank_prompt(self):
+        document = _valid_style_gene_candidates_document()
+        document["aspects"]["rendering"][0]["prompt"] = " "
+
+        with self.assertRaisesRegex(Phase0Error, "prompt"):
+            validate_style_gene_candidates_document(document)
+
+    def test_p0_06_rejects_confidence_outside_zero_to_one(self):
+        for invalid_confidence in (-0.01, 1.01, True, "0.5"):
+            with self.subTest(invalid_confidence=invalid_confidence):
+                document = _valid_style_gene_candidates_document()
+                document["aspects"]["rendering"][0]["confidence"] = invalid_confidence
+
+                with self.assertRaisesRegex(Phase0Error, "confidence"):
+                    validate_style_gene_candidates_document(document)
+
+    def test_p0_06_rejects_empty_or_absolute_source_images(self):
+        invalid_source_images = (
+            [],
+            [""],
+            ["/reference_images/ref-001.png"],
+            ["\\reference_images\\ref-001.png"],
+            ["C:reference_images\\ref-001.png"],
+            ["C:\\reference_images\\ref-001.png"],
+        )
+
+        for source_images in invalid_source_images:
+            with self.subTest(source_images=source_images):
+                document = _valid_style_gene_candidates_document()
+                document["aspects"]["rendering"][0]["source_images"] = source_images
+
+                with self.assertRaisesRegex(Phase0Error, "source_images"):
+                    validate_style_gene_candidates_document(document)
 
 
 if __name__ == "__main__":
