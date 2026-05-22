@@ -524,7 +524,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-12: AC-01A test coverage
 
-狀態：未實作。
+狀態：已完成。
+完成依據：baseline tests 通過；`T-AC01A-phase0-reference-analysis` 覆蓋 enabled output、disabled skip、invalid reference input 與 invalid candidate schema。
 
 - 補上 `T-AC01A-phase0-reference-analysis`。
 - 測試 enabled path 會產生 manifest 與 candidate genes。

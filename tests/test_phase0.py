@@ -770,5 +770,107 @@ class GenePoolOverwriteProtectionTests(unittest.TestCase):
         self.assertEqual(gene_pool_after_run, original_gene_pool)
 
 
+class AC01APhase0ReferenceAnalysisTests(unittest.TestCase):
+    def test_p0_12_ac01a_enabled_path_outputs_traceable_candidate_genes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "run-001"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+
+            result = run_phase0(
+                policy=ReferenceImageAnalysisPolicy(enabled=True),
+                project_root=project_root,
+                run_dir=run_dir,
+            )
+
+            manifest_path = run_dir / result.reference_image_manifest_path
+            candidates_path = run_dir / result.style_gene_candidates_path
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            candidate_document = json.loads(candidates_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.status, Phase0Status.PHASE0_OUTPUT_WRITTEN)
+        self.assertEqual(
+            {record["path"] for record in manifest["images"]},
+            {"reference_images/a.png"},
+        )
+        self.assertEqual(
+            set(candidate_document["aspects"]),
+            set(STYLE_GENE_CANDIDATE_ASPECTS),
+        )
+        for candidates in candidate_document["aspects"].values():
+            self.assertGreaterEqual(len(candidates), 1)
+            for candidate in candidates:
+                self.assertIn("reference_images/a.png", candidate["source_images"])
+
+    def test_p0_12_ac01a_disabled_path_skips_reference_images(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            run_dir = project_root / "runs" / "run-001"
+
+            result = run_phase0(
+                policy=ReferenceImageAnalysisPolicy(
+                    enabled=False,
+                    input_dir="missing_reference_images",
+                ),
+                project_root=project_root,
+                run_dir=run_dir,
+            )
+
+        self.assertEqual(result.status, Phase0Status.SKIPPED)
+        self.assertEqual(result.reason, "reference image analysis disabled")
+
+    def test_p0_12_ac01a_rejects_missing_or_empty_reference_images(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+
+            with self.assertRaisesRegex(Phase0Error, "reference image directory does not exist"):
+                run_phase0(
+                    policy=ReferenceImageAnalysisPolicy(enabled=True),
+                    project_root=project_root,
+                    run_dir=project_root / "runs" / "run-001",
+                )
+
+            (project_root / "reference_images").mkdir()
+
+            with self.assertRaisesRegex(Phase0Error, "no supported reference images found"):
+                run_phase0(
+                    policy=ReferenceImageAnalysisPolicy(enabled=True),
+                    project_root=project_root,
+                    run_dir=project_root / "runs" / "run-002",
+                )
+
+    def test_p0_12_ac01a_rejects_invalid_candidate_schema(self):
+        def invalid_extractor(reference_image_manifest_records):
+            return {
+                "rendering": (
+                    StyleGeneCandidate(
+                        id="rendering_invalid",
+                        prompt="invalid candidate",
+                        confidence=0.5,
+                        source_images=(),
+                        notes="",
+                    ),
+                ),
+                "color_light": (),
+                "texture_artifacts": (),
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+
+            with self.assertRaisesRegex(Phase0Error, "source_images"):
+                run_phase0(
+                    policy=ReferenceImageAnalysisPolicy(enabled=True),
+                    project_root=project_root,
+                    run_dir=project_root / "runs" / "run-001",
+                    extractor=invalid_extractor,
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
