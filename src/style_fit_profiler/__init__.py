@@ -17,6 +17,7 @@ from .phase0 import (
     build_style_gene_candidates_document,
     deterministic_mock_phase0_extractor,
     extract_style_gene_candidates,
+    validate_style_gene_candidate_aspects,
     validate_style_gene_candidates_document,
 )
 
@@ -38,5 +39,6 @@ __all__ = [
     "deterministic_mock_phase0_extractor",
     "extract_style_gene_candidates",
     "run_phase0",
+    "validate_style_gene_candidate_aspects",
     "validate_style_gene_candidates_document",
 ]

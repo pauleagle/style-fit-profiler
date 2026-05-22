@@ -494,7 +494,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-09: Aspect classification
 
-狀態：未實作。
+狀態：已完成。
+完成依據：baseline tests 通過；focused mutation review 已殺掉 missing/unknown aspect 與 ID prefix mismatch 變異。
 
 - 確保 extractor output 被分類到三個固定 aspects。
 - 不允許輸出未知 aspect key。

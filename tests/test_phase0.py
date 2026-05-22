@@ -23,6 +23,7 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     discover_reference_images,
     extract_style_gene_candidates,
     run_phase0,
+    validate_style_gene_candidate_aspects,
     validate_style_gene_candidates_document,
 )
 
@@ -527,6 +528,87 @@ class DeterministicMockExtractorTests(unittest.TestCase):
                 "texture_artifacts": 2,
             },
         )
+
+
+class AspectClassificationTests(unittest.TestCase):
+    def test_p0_09_accepts_fixed_aspects_with_matching_id_prefixes(self):
+        candidates_by_aspect = deterministic_mock_phase0_extractor(
+            (
+                {
+                    "path": "reference_images/ref-001.png",
+                    "file_hash": "sha256:abc",
+                    "image_size": {"width": 2, "height": 3},
+                    "analysis_status": "pending",
+                },
+            )
+        )
+
+        validate_style_gene_candidate_aspects(candidates_by_aspect)
+
+    def test_p0_09_rejects_unknown_or_missing_aspect_key(self):
+        valid_candidates = deterministic_mock_phase0_extractor(
+            (
+                {
+                    "path": "reference_images/ref-001.png",
+                    "file_hash": "sha256:abc",
+                    "image_size": {"width": 2, "height": 3},
+                    "analysis_status": "pending",
+                },
+            )
+        )
+
+        missing_aspect = dict(valid_candidates)
+        del missing_aspect["texture_artifacts"]
+
+        with self.assertRaisesRegex(Phase0Error, "missing aspect"):
+            validate_style_gene_candidate_aspects(missing_aspect)
+
+        unknown_aspect = dict(valid_candidates)
+        unknown_aspect["composition"] = ()
+
+        with self.assertRaisesRegex(Phase0Error, "unknown aspect"):
+            validate_style_gene_candidate_aspects(unknown_aspect)
+
+    def test_p0_09_extractor_adapter_rejects_unknown_aspect_key(self):
+        def extractor(reference_image_manifest_records):
+            return {
+                "rendering": (),
+                "color_light": (),
+                "texture_artifacts": (),
+                "composition": (),
+            }
+
+        with self.assertRaisesRegex(Phase0Error, "unknown aspect"):
+            extract_style_gene_candidates(
+                extractor=extractor,
+                reference_image_manifest_records=(),
+            )
+
+    def test_p0_09_rejects_candidate_id_prefix_that_does_not_match_aspect(self):
+        candidates_by_aspect = deterministic_mock_phase0_extractor(
+            (
+                {
+                    "path": "reference_images/ref-001.png",
+                    "file_hash": "sha256:abc",
+                    "image_size": {"width": 2, "height": 3},
+                    "analysis_status": "pending",
+                },
+            )
+        )
+        candidates_by_aspect = {
+            aspect: list(candidates)
+            for aspect, candidates in candidates_by_aspect.items()
+        }
+        candidates_by_aspect["rendering"][0] = StyleGeneCandidate(
+            id="color_light_wrong_prefix",
+            prompt="wrong prefix",
+            confidence=0.5,
+            source_images=("reference_images/ref-001.png",),
+            notes="",
+        )
+
+        with self.assertRaisesRegex(Phase0Error, "candidate gene id prefix"):
+            validate_style_gene_candidate_aspects(candidates_by_aspect)
 
 
 if __name__ == "__main__":

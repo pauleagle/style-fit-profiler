@@ -105,10 +105,44 @@ def extract_style_gene_candidates(
 ) -> dict[str, tuple[StyleGeneCandidate, ...]]:
     """Call a Phase 0 extractor without granting it output-file ownership."""
 
-    return {
+    candidates_by_aspect = {
         aspect: tuple(candidates)
         for aspect, candidates in extractor(reference_image_manifest_records).items()
     }
+    validate_style_gene_candidate_aspects(candidates_by_aspect)
+    return candidates_by_aspect
+
+
+def validate_style_gene_candidate_aspects(
+    candidates_by_aspect: Mapping[str, Sequence[StyleGeneCandidate]],
+) -> None:
+    """Validate P0-09 aspect keys and candidate ID prefixes."""
+
+    if not isinstance(candidates_by_aspect, Mapping):
+        raise Phase0Error("Phase 0 candidate gene aspects must be an object")
+
+    expected_aspects = set(STYLE_GENE_CANDIDATE_ASPECTS)
+    actual_aspects = set(candidates_by_aspect)
+    missing_aspects = sorted(expected_aspects - actual_aspects)
+    unknown_aspects = sorted(actual_aspects - expected_aspects)
+
+    if missing_aspects:
+        raise Phase0Error(f"Phase 0 candidate gene missing aspect: {', '.join(missing_aspects)}")
+    if unknown_aspects:
+        raise Phase0Error(f"Phase 0 candidate gene unknown aspect: {', '.join(unknown_aspects)}")
+
+    for aspect in STYLE_GENE_CANDIDATE_ASPECTS:
+        candidates = candidates_by_aspect[aspect]
+        if isinstance(candidates, str) or not isinstance(candidates, Sequence):
+            raise Phase0Error(f"Phase 0 candidate gene aspect must contain a list: {aspect}")
+
+        for candidate in candidates:
+            if not isinstance(candidate, StyleGeneCandidate):
+                raise Phase0Error("Phase 0 candidate gene aspect must contain StyleGeneCandidate records")
+            if not candidate.id.startswith(f"{aspect}_"):
+                raise Phase0Error(
+                    f"Phase 0 candidate gene id prefix does not match aspect: {candidate.id}"
+                )
 
 
 def deterministic_mock_phase0_extractor(
