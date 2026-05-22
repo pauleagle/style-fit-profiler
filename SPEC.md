@@ -400,6 +400,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-00: Python project scaffold
 
+狀態：已完成。
+
 - 建立最小 Python project metadata，例如 `pyproject.toml`。
 - 建立 `src/style_fit_profiler/` package layout。
 - 建立 `tests/` 測試目錄與可執行的 stdlib `unittest` discovery。
@@ -411,6 +413,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-01: Config model
 
+狀態：已完成。
+
 - 定義 `reference_image_analysis_policy` config model。
 - 支援 `enabled`、`input_dir`、`output_file`、`aspects`。
 - 拒絕 unknown policy fields，避免 config typo 被 silent ignore。
@@ -419,12 +423,17 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-02: Disabled path
 
+狀態：已完成。
+
 - 當 `reference_image_analysis_policy.enabled = false` 時，不讀取 reference images。
 - 不要求 `reference_images/` 存在。
 - 不產生 `phase0/` output。
 - Spec reference: Business Rule 13。
 
 ### P0-03: Reference image discovery
+
+狀態：已完成。
+完成依據：baseline tests 通過；focused mutation review 已殺掉 P0-03 關鍵變異。
 
 - 當 Phase 0 enabled 時，掃描 `reference_image_analysis_policy.input_dir`。
 - 只接受支援的 image file extensions。
@@ -433,6 +442,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-04: Reference image manifest
 
+狀態：未實作。
+
 - 為每張 reference image 建立 manifest record。
 - 每筆 record 至少包含 relative path、file hash、image size、analysis status。
 - Manifest 輸出到 `phase0/reference_image_manifest.json`。
@@ -440,12 +451,16 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-05: Candidate gene schema
 
+狀態：未實作。
+
 - 定義 `style_gene_candidates.json` schema。
 - `aspects` 必須包含 `rendering`、`color_light`、`texture_artifacts`。
 - 每個 candidate gene 必須包含 `id`、`prompt`、`confidence`、`source_images`、`notes`。
 - Spec reference: Phase 0 candidate gene validation rules。
 
 ### P0-06: Candidate gene validator
+
+狀態：未實作。
 
 - 驗證 candidate gene IDs 在檔案內唯一。
 - 驗證 `prompt` 不為空。
@@ -455,6 +470,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-07: Extractor interface
 
+狀態：未實作。
+
 - 定義 Phase 0 extractor interface。
 - Interface input 為 reference image manifest records。
 - Interface output 為三面向 candidate gene collections。
@@ -463,6 +480,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-08: Deterministic mock extractor
 
+狀態：未實作。
+
 - 實作 deterministic mock extractor，供測試與早期 CLI 使用。
 - Mock extractor 可根據檔名、固定 fixture metadata 或測試輸入產生候選 genes。
 - 相同輸入必須產生等價 `style_gene_candidates.json`。
@@ -470,12 +489,16 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-09: Aspect classification
 
+狀態：未實作。
+
 - 確保 extractor output 被分類到三個固定 aspects。
 - 不允許輸出未知 aspect key。
 - 每個輸出 candidate gene 的 ID prefix 應對應 aspect，例如 `rendering_`、`color_light_`、`texture_artifacts_`。
 - Spec reference: `AC-01A`, Business Rule 15。
 
 ### P0-10: Phase 0 output writer
+
+狀態：未實作。
 
 - 建立 `phase0/` output directory。
 - 寫出 `reference_image_manifest.json`。
@@ -485,11 +508,15 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-11: No implicit gene pool overwrite
 
+狀態：未實作。
+
 - Phase 0 不得直接覆蓋 `style_gene_pool.json`。
 - 若未來加入 merge command，merge 必須是獨立步驟，且輸入為已驗證的 candidate genes。
 - Spec reference: Business Rule 14, invariant "Phase 0 失敗不可破壞既有 `style_gene_pool.json`"。
 
 ### P0-12: AC-01A test coverage
+
+狀態：未實作。
 
 - 補上 `T-AC01A-phase0-reference-analysis`。
 - 測試 enabled path 會產生 manifest 與 candidate genes。
