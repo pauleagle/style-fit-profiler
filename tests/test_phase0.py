@@ -20,6 +20,7 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     StyleGeneCandidate,
     build_style_gene_candidates_document,
     discover_reference_images,
+    extract_style_gene_candidates,
     run_phase0,
     validate_style_gene_candidates_document,
 )
@@ -441,6 +442,47 @@ class CandidateGeneValidatorTests(unittest.TestCase):
 
                 with self.assertRaisesRegex(Phase0Error, "source_images"):
                     validate_style_gene_candidates_document(document)
+
+
+class ExtractorInterfaceTests(unittest.TestCase):
+    def test_p0_07_extractor_receives_manifest_records_and_returns_candidates(self):
+        manifest_records = (
+            {
+                "path": "reference_images/ref-001.png",
+                "file_hash": "sha256:abc",
+                "image_size": {"width": 2, "height": 3},
+                "analysis_status": "pending",
+            },
+        )
+        calls = []
+
+        def extractor(reference_image_manifest_records):
+            calls.append(reference_image_manifest_records)
+            return {
+                "rendering": (
+                    StyleGeneCandidate(
+                        id="rendering_mock_ref_001",
+                        prompt="mock rendering trait from ref 001",
+                        confidence=0.5,
+                        source_images=("reference_images/ref-001.png",),
+                        notes="",
+                    ),
+                ),
+                "color_light": (),
+                "texture_artifacts": (),
+            }
+
+        candidates_by_aspect = extract_style_gene_candidates(
+            extractor=extractor,
+            reference_image_manifest_records=manifest_records,
+        )
+
+        self.assertEqual(calls, [manifest_records])
+        self.assertEqual(tuple(candidates_by_aspect), STYLE_GENE_CANDIDATE_ASPECTS)
+        self.assertEqual(
+            candidates_by_aspect["rendering"][0].id,
+            "rendering_mock_ref_001",
+        )
 
 
 if __name__ == "__main__":

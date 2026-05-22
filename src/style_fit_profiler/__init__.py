@@ -11,8 +11,11 @@ from .phase0 import (
     STYLE_GENE_CANDIDATE_FIELDS,
     STYLE_GENE_CANDIDATES_SOURCE,
     STYLE_GENE_CANDIDATES_VERSION,
+    CandidateGenesByAspect,
+    ReferenceImageManifestRecord,
     StyleGeneCandidate,
     build_style_gene_candidates_document,
+    extract_style_gene_candidates,
     validate_style_gene_candidates_document,
 )
 
@@ -27,8 +30,11 @@ __all__ = [
     "STYLE_GENE_CANDIDATE_FIELDS",
     "STYLE_GENE_CANDIDATES_SOURCE",
     "STYLE_GENE_CANDIDATES_VERSION",
+    "CandidateGenesByAspect",
+    "ReferenceImageManifestRecord",
     "StyleGeneCandidate",
     "build_style_gene_candidates_document",
+    "extract_style_gene_candidates",
     "run_phase0",
     "validate_style_gene_candidates_document",
 ]

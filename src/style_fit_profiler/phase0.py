@@ -7,7 +7,7 @@ from enum import Enum
 import hashlib
 import json
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 from .config import ALLOWED_REFERENCE_IMAGE_ASPECTS, ReferenceImageAnalysisPolicy
 
@@ -79,7 +79,31 @@ class StyleGeneCandidate:
         }
 
 
-Phase0Extractor = Callable[..., Any]
+ReferenceImageManifestRecord = Mapping[str, Any]
+CandidateGenesByAspect = Mapping[str, Sequence[StyleGeneCandidate]]
+
+
+class Phase0Extractor(Protocol):
+    """Callable contract for Phase 0 candidate gene extractors."""
+
+    def __call__(
+        self,
+        reference_image_manifest_records: Sequence[ReferenceImageManifestRecord],
+    ) -> CandidateGenesByAspect:
+        """Return candidate style genes grouped by Phase 0 aspect."""
+
+
+def extract_style_gene_candidates(
+    *,
+    extractor: Phase0Extractor,
+    reference_image_manifest_records: Sequence[ReferenceImageManifestRecord],
+) -> dict[str, tuple[StyleGeneCandidate, ...]]:
+    """Call a Phase 0 extractor without granting it output-file ownership."""
+
+    return {
+        aspect: tuple(candidates)
+        for aspect, candidates in extractor(reference_image_manifest_records).items()
+    }
 
 
 def build_style_gene_candidates_document(
