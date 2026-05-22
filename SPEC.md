@@ -515,7 +515,8 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### P0-11: No implicit gene pool overwrite
 
-狀態：未實作。
+狀態：已完成。
+完成依據：baseline tests 通過；focused mutation review 已殺掉 success/failure path 覆蓋 `style_gene_pool.json` 變異。
 
 - Phase 0 不得直接覆蓋 `style_gene_pool.json`。
 - 若未來加入 merge command，merge 必須是獨立步驟，且輸入為已驗證的 candidate genes。

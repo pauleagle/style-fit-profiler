@@ -716,5 +716,59 @@ class Phase0OutputWriterTests(unittest.TestCase):
         )
 
 
+class GenePoolOverwriteProtectionTests(unittest.TestCase):
+    def test_p0_11_phase0_success_does_not_overwrite_style_gene_pool(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "run-001"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+            gene_pool_path = project_root / "style_gene_pool.json"
+            original_gene_pool = '{"version":"0.1.0","genes":{"rendering":[]}}\n'
+            gene_pool_path.write_text(original_gene_pool, encoding="utf-8")
+
+            run_phase0(
+                policy=ReferenceImageAnalysisPolicy(enabled=True),
+                project_root=project_root,
+                run_dir=run_dir,
+            )
+
+            gene_pool_after_run = gene_pool_path.read_text(encoding="utf-8")
+
+        self.assertEqual(gene_pool_after_run, original_gene_pool)
+
+    def test_p0_11_phase0_failure_does_not_overwrite_style_gene_pool(self):
+        def invalid_extractor(reference_image_manifest_records):
+            return {
+                "rendering": (),
+                "color_light": (),
+                "texture_artifacts": (),
+                "composition": (),
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "run-001"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+            gene_pool_path = project_root / "style_gene_pool.json"
+            original_gene_pool = '{"version":"0.1.0","genes":{"rendering":[]}}\n'
+            gene_pool_path.write_text(original_gene_pool, encoding="utf-8")
+
+            with self.assertRaisesRegex(Phase0Error, "unknown aspect"):
+                run_phase0(
+                    policy=ReferenceImageAnalysisPolicy(enabled=True),
+                    project_root=project_root,
+                    run_dir=run_dir,
+                    extractor=invalid_extractor,
+                )
+
+            gene_pool_after_run = gene_pool_path.read_text(encoding="utf-8")
+
+        self.assertEqual(gene_pool_after_run, original_gene_pool)
+
+
 if __name__ == "__main__":
     unittest.main()
