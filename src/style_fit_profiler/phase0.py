@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Callable
 
@@ -33,6 +35,7 @@ class Phase0Status(str, Enum):
 
     SKIPPED = "skipped"
     REFERENCE_IMAGES_DISCOVERED = "reference_images_discovered"
+    REFERENCE_IMAGE_MANIFEST_WRITTEN = "reference_image_manifest_written"
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,7 @@ class Phase0Result:
     status: Phase0Status
     reason: str
     reference_image_paths: tuple[str, ...] = ()
+    reference_image_manifest_path: str | None = None
 
 
 Phase0Extractor = Callable[..., Any]
@@ -70,11 +74,17 @@ def run_phase0(
         project_root=project_root,
         input_dir=policy.input_dir,
     )
+    reference_image_manifest_path = write_reference_image_manifest(
+        project_root=project_root,
+        run_dir=run_dir,
+        reference_image_paths=reference_image_paths,
+    )
 
     return Phase0Result(
-        status=Phase0Status.REFERENCE_IMAGES_DISCOVERED,
-        reason="reference images discovered",
+        status=Phase0Status.REFERENCE_IMAGE_MANIFEST_WRITTEN,
+        reason="reference image manifest written",
         reference_image_paths=reference_image_paths,
+        reference_image_manifest_path=reference_image_manifest_path,
     )
 
 
@@ -104,3 +114,234 @@ def discover_reference_images(*, project_root: Path, input_dir: str) -> tuple[st
         raise Phase0Error(f"no supported reference images found in: {input_dir}")
 
     return image_paths
+
+
+def write_reference_image_manifest(
+    *,
+    project_root: Path,
+    run_dir: Path,
+    reference_image_paths: tuple[str, ...],
+) -> str:
+    """Write the P0-04 reference image manifest and return its run-relative path."""
+
+    manifest = {
+        "version": "0.1.0",
+        "source": "phase0_reference_image_analysis",
+        "images": [
+            _build_reference_image_manifest_record(
+                project_root=project_root,
+                reference_image_path=reference_image_path,
+            )
+            for reference_image_path in reference_image_paths
+        ],
+    }
+
+    manifest_path = run_dir / "phase0" / "reference_image_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return manifest_path.relative_to(run_dir).as_posix()
+
+
+def _build_reference_image_manifest_record(
+    *,
+    project_root: Path,
+    reference_image_path: str,
+) -> dict[str, Any]:
+    image_path = project_root / reference_image_path
+    image_bytes = image_path.read_bytes()
+    width, height = _read_image_size(image_bytes, image_path)
+
+    return {
+        "path": reference_image_path,
+        "file_hash": f"sha256:{hashlib.sha256(image_bytes).hexdigest()}",
+        "image_size": {"width": width, "height": height},
+        "analysis_status": "pending",
+    }
+
+
+def _read_image_size(image_bytes: bytes, image_path: Path) -> tuple[int, int]:
+    suffix = image_path.suffix.lower()
+
+    if suffix == ".png":
+        return _read_png_size(image_bytes, image_path)
+    if suffix in {".jpg", ".jpeg"}:
+        return _read_jpeg_size(image_bytes, image_path)
+    if suffix == ".gif":
+        return _read_gif_size(image_bytes, image_path)
+    if suffix == ".bmp":
+        return _read_bmp_size(image_bytes, image_path)
+    if suffix == ".webp":
+        return _read_webp_size(image_bytes, image_path)
+    if suffix in {".tif", ".tiff"}:
+        return _read_tiff_size(image_bytes, image_path)
+
+    raise Phase0Error(f"unsupported reference image format: {image_path.as_posix()}")
+
+
+def _read_png_size(image_bytes: bytes, image_path: Path) -> tuple[int, int]:
+    if len(image_bytes) >= 24 and image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return (
+            int.from_bytes(image_bytes[16:20], "big"),
+            int.from_bytes(image_bytes[20:24], "big"),
+        )
+    raise Phase0Error(f"cannot read PNG image size: {image_path.as_posix()}")
+
+
+def _read_jpeg_size(image_bytes: bytes, image_path: Path) -> tuple[int, int]:
+    if not image_bytes.startswith(b"\xff\xd8"):
+        raise Phase0Error(f"cannot read JPEG image size: {image_path.as_posix()}")
+
+    start_of_frame_markers = {
+        0xC0,
+        0xC1,
+        0xC2,
+        0xC3,
+        0xC5,
+        0xC6,
+        0xC7,
+        0xC9,
+        0xCA,
+        0xCB,
+        0xCD,
+        0xCE,
+        0xCF,
+    }
+    offset = 2
+
+    while offset < len(image_bytes):
+        while offset < len(image_bytes) and image_bytes[offset] != 0xFF:
+            offset += 1
+        while offset < len(image_bytes) and image_bytes[offset] == 0xFF:
+            offset += 1
+        if offset >= len(image_bytes):
+            break
+
+        marker = image_bytes[offset]
+        offset += 1
+
+        if marker == 0xD9 or 0xD0 <= marker <= 0xD7:
+            continue
+        if offset + 2 > len(image_bytes):
+            break
+
+        segment_length = int.from_bytes(image_bytes[offset : offset + 2], "big")
+        if segment_length < 2 or offset + segment_length > len(image_bytes):
+            break
+
+        if marker in start_of_frame_markers and segment_length >= 7:
+            return (
+                int.from_bytes(image_bytes[offset + 5 : offset + 7], "big"),
+                int.from_bytes(image_bytes[offset + 3 : offset + 5], "big"),
+            )
+
+        offset += segment_length
+
+    raise Phase0Error(f"cannot read JPEG image size: {image_path.as_posix()}")
+
+
+def _read_gif_size(image_bytes: bytes, image_path: Path) -> tuple[int, int]:
+    if len(image_bytes) >= 10 and image_bytes[:6] in {b"GIF87a", b"GIF89a"}:
+        return (
+            int.from_bytes(image_bytes[6:8], "little"),
+            int.from_bytes(image_bytes[8:10], "little"),
+        )
+    raise Phase0Error(f"cannot read GIF image size: {image_path.as_posix()}")
+
+
+def _read_bmp_size(image_bytes: bytes, image_path: Path) -> tuple[int, int]:
+    if len(image_bytes) < 26 or not image_bytes.startswith(b"BM"):
+        raise Phase0Error(f"cannot read BMP image size: {image_path.as_posix()}")
+
+    dib_header_size = int.from_bytes(image_bytes[14:18], "little")
+    if dib_header_size == 12 and len(image_bytes) >= 22:
+        return (
+            int.from_bytes(image_bytes[18:20], "little"),
+            int.from_bytes(image_bytes[20:22], "little"),
+        )
+
+    return (
+        int.from_bytes(image_bytes[18:22], "little", signed=True),
+        abs(int.from_bytes(image_bytes[22:26], "little", signed=True)),
+    )
+
+
+def _read_webp_size(image_bytes: bytes, image_path: Path) -> tuple[int, int]:
+    if len(image_bytes) < 20 or image_bytes[:4] != b"RIFF" or image_bytes[8:12] != b"WEBP":
+        raise Phase0Error(f"cannot read WebP image size: {image_path.as_posix()}")
+
+    offset = 12
+    while offset + 8 <= len(image_bytes):
+        chunk_type = image_bytes[offset : offset + 4]
+        chunk_size = int.from_bytes(image_bytes[offset + 4 : offset + 8], "little")
+        payload_start = offset + 8
+        payload_end = payload_start + chunk_size
+        payload = image_bytes[payload_start:payload_end]
+
+        if payload_end > len(image_bytes):
+            break
+        if chunk_type == b"VP8X" and len(payload) >= 10:
+            width = int.from_bytes(payload[4:7], "little") + 1
+            height = int.from_bytes(payload[7:10], "little") + 1
+            return (width, height)
+        if chunk_type == b"VP8L" and len(payload) >= 5 and payload[0] == 0x2F:
+            bits = int.from_bytes(payload[1:5], "little")
+            return ((bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1)
+        if chunk_type == b"VP8 " and len(payload) >= 10 and payload[3:6] == b"\x9d\x01\x2a":
+            width = int.from_bytes(payload[6:8], "little") & 0x3FFF
+            height = int.from_bytes(payload[8:10], "little") & 0x3FFF
+            return (width, height)
+
+        offset = payload_end + (chunk_size % 2)
+
+    raise Phase0Error(f"cannot read WebP image size: {image_path.as_posix()}")
+
+
+def _read_tiff_size(image_bytes: bytes, image_path: Path) -> tuple[int, int]:
+    if len(image_bytes) < 8:
+        raise Phase0Error(f"cannot read TIFF image size: {image_path.as_posix()}")
+
+    if image_bytes[:4] == b"II*\x00":
+        byte_order = "little"
+    elif image_bytes[:4] == b"MM\x00*":
+        byte_order = "big"
+    else:
+        raise Phase0Error(f"cannot read TIFF image size: {image_path.as_posix()}")
+
+    ifd_offset = int.from_bytes(image_bytes[4:8], byte_order)
+    if ifd_offset + 2 > len(image_bytes):
+        raise Phase0Error(f"cannot read TIFF image size: {image_path.as_posix()}")
+
+    entry_count = int.from_bytes(image_bytes[ifd_offset : ifd_offset + 2], byte_order)
+    width: int | None = None
+    height: int | None = None
+
+    for entry_index in range(entry_count):
+        entry_offset = ifd_offset + 2 + (entry_index * 12)
+        if entry_offset + 12 > len(image_bytes):
+            break
+
+        tag = int.from_bytes(image_bytes[entry_offset : entry_offset + 2], byte_order)
+        field_type = int.from_bytes(image_bytes[entry_offset + 2 : entry_offset + 4], byte_order)
+        count = int.from_bytes(image_bytes[entry_offset + 4 : entry_offset + 8], byte_order)
+        value_bytes = image_bytes[entry_offset + 8 : entry_offset + 12]
+
+        if count != 1 or field_type not in {3, 4}:
+            continue
+
+        if field_type == 3:
+            value = int.from_bytes(value_bytes[:2], byte_order)
+        else:
+            value = int.from_bytes(value_bytes, byte_order)
+
+        if tag == 256:
+            width = value
+        elif tag == 257:
+            height = value
+
+    if width is not None and height is not None:
+        return (width, height)
+
+    raise Phase0Error(f"cannot read TIFF image size: {image_path.as_posix()}")
