@@ -7,7 +7,7 @@ from enum import Enum
 import hashlib
 import json
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from .config import ALLOWED_REFERENCE_IMAGE_ASPECTS, ReferenceImageAnalysisPolicy
 
@@ -55,6 +55,13 @@ class Phase0Status(str, Enum):
     PHASE0_OUTPUT_WRITTEN = "phase0_output_written"
 
 
+class Phase0BatchStatus(str, Enum):
+    """Execution status for one EXP-002 batch."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True)
 class Phase0Result:
     """Result returned by the Phase 0 workflow runner."""
@@ -97,6 +104,19 @@ class Phase0Batch:
 
 ReferenceImageManifestRecord = Mapping[str, Any]
 CandidateGenesByAspect = Mapping[str, Sequence[StyleGeneCandidate]]
+Phase0BatchAnalyzer = Callable[[Phase0Batch], CandidateGenesByAspect]
+
+
+@dataclass(frozen=True)
+class Phase0BatchResult:
+    """EXP-002B result record for one batch analysis attempt."""
+
+    batch_index: int
+    input_paths: tuple[str, ...]
+    status: Phase0BatchStatus
+    candidates_by_aspect: dict[str, tuple[StyleGeneCandidate, ...]] | None = None
+    error: str | None = None
+    output_paths: tuple[str, ...] = ()
 
 
 class Phase0Extractor(Protocol):
@@ -153,6 +173,43 @@ def plan_phase0_batches(
         )
 
     return tuple(batches)
+
+
+def run_phase0_batches(
+    *,
+    batches: Sequence[Phase0Batch],
+    analyzer: Phase0BatchAnalyzer,
+) -> tuple[Phase0BatchResult, ...]:
+    """Run EXP-002B batch analysis while preserving per-batch status."""
+
+    results: list[Phase0BatchResult] = []
+    for batch in batches:
+        try:
+            candidates_by_aspect = {
+                aspect: tuple(candidates)
+                for aspect, candidates in analyzer(batch).items()
+            }
+        except Exception as error:
+            results.append(
+                Phase0BatchResult(
+                    batch_index=batch.index,
+                    input_paths=batch.input_paths,
+                    status=Phase0BatchStatus.FAILED,
+                    error=str(error),
+                )
+            )
+            continue
+
+        results.append(
+            Phase0BatchResult(
+                batch_index=batch.index,
+                input_paths=batch.input_paths,
+                status=Phase0BatchStatus.COMPLETED,
+                candidates_by_aspect=candidates_by_aspect,
+            )
+        )
+
+    return tuple(results)
 
 
 def validate_style_gene_candidate_aspects(

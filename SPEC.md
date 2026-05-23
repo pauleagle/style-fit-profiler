@@ -739,7 +739,8 @@ Candidate experimental atomic items：
   - 將 manifest records 分組成 deterministic batches。
   - 支援可配置 batch size 與 ordering rule。
 - `EXP-002B`: Batch runner
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；runner tests 覆蓋 completed / failed batch status、batch-level error、failure 後續批次仍執行與 planner deterministic ordering。
   - 執行每一批 analysis，並記錄 batch-level status 與 error。
   - 支援 fake client 與 mock backend。
 - `EXP-002C`: Batch result aggregator

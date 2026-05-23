@@ -18,12 +18,15 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     STYLE_GENE_CANDIDATES_SOURCE,
     STYLE_GENE_CANDIDATES_VERSION,
     Phase0Batch,
+    Phase0BatchResult,
+    Phase0BatchStatus,
     StyleGeneCandidate,
     build_style_gene_candidates_document,
     deterministic_mock_phase0_extractor,
     discover_reference_images,
     extract_style_gene_candidates,
     plan_phase0_batches,
+    run_phase0_batches,
     run_phase0,
     validate_style_gene_candidate_aspects,
     validate_style_gene_candidates_document,
@@ -592,6 +595,123 @@ class Phase0BatchPlannerTests(unittest.TestCase):
                 batch_size=1,
                 ordering="random",
             )
+
+
+class Phase0BatchRunnerTests(unittest.TestCase):
+    def test_exp_002b_runner_records_completed_batch_status(self):
+        batch = Phase0Batch(
+            index=0,
+            input_paths=("reference_images/a.png",),
+            records=({"path": "reference_images/a.png"},),
+        )
+        calls = []
+
+        def analyzer(received_batch):
+            calls.append(received_batch)
+            return {
+                "rendering": (
+                    StyleGeneCandidate(
+                        id="rendering_batch_a",
+                        prompt="batch rendering trait",
+                        confidence=0.5,
+                        source_images=("reference_images/a.png",),
+                        notes="batch analyzer",
+                    ),
+                ),
+                "color_light": (),
+                "texture_artifacts": (),
+            }
+
+        results = run_phase0_batches(batches=(batch,), analyzer=analyzer)
+
+        self.assertEqual(calls, [batch])
+        self.assertEqual(
+            results,
+            (
+                Phase0BatchResult(
+                    batch_index=0,
+                    input_paths=("reference_images/a.png",),
+                    status=Phase0BatchStatus.COMPLETED,
+                    candidates_by_aspect={
+                        "rendering": (
+                            StyleGeneCandidate(
+                                id="rendering_batch_a",
+                                prompt="batch rendering trait",
+                                confidence=0.5,
+                                source_images=("reference_images/a.png",),
+                                notes="batch analyzer",
+                            ),
+                        ),
+                        "color_light": (),
+                        "texture_artifacts": (),
+                    },
+                ),
+            ),
+        )
+
+    def test_exp_002b_runner_records_failure_and_continues_remaining_batches(self):
+        batches = (
+            Phase0Batch(index=0, input_paths=("reference_images/a.png",), records=({"path": "reference_images/a.png"},)),
+            Phase0Batch(index=1, input_paths=("reference_images/b.png",), records=({"path": "reference_images/b.png"},)),
+            Phase0Batch(index=2, input_paths=("reference_images/c.png",), records=({"path": "reference_images/c.png"},)),
+        )
+        calls = []
+
+        def analyzer(batch):
+            calls.append(batch.index)
+            if batch.index == 1:
+                raise Phase0Error("provider unavailable")
+            return {
+                "rendering": (),
+                "color_light": (),
+                "texture_artifacts": (),
+            }
+
+        results = run_phase0_batches(batches=batches, analyzer=analyzer)
+
+        self.assertEqual(calls, [0, 1, 2])
+        self.assertEqual(
+            [result.status for result in results],
+            [
+                Phase0BatchStatus.COMPLETED,
+                Phase0BatchStatus.FAILED,
+                Phase0BatchStatus.COMPLETED,
+            ],
+        )
+        self.assertEqual(results[1].batch_index, 1)
+        self.assertEqual(results[1].input_paths, ("reference_images/b.png",))
+        self.assertIn("provider unavailable", results[1].error)
+        self.assertIsNone(results[1].candidates_by_aspect)
+
+    def test_exp_002b_runner_uses_planner_order_deterministically(self):
+        batches = plan_phase0_batches(
+            reference_image_manifest_records=(
+                {"path": "reference_images/c.png"},
+                {"path": "reference_images/a.png"},
+                {"path": "reference_images/b.png"},
+            ),
+            batch_size=1,
+        )
+        calls = []
+
+        def analyzer(batch):
+            calls.append(batch.input_paths)
+            return {
+                "rendering": (),
+                "color_light": (),
+                "texture_artifacts": (),
+            }
+
+        run_phase0_batches(batches=batches, analyzer=analyzer)
+
+        self.assertEqual(
+            calls,
+            [
+                ("reference_images/a.png",),
+                ("reference_images/b.png",),
+                ("reference_images/c.png",),
+            ],
+        )
 
 
 class DeterministicMockExtractorTests(unittest.TestCase):
