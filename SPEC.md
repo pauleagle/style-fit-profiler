@@ -624,6 +624,8 @@ Candidate experimental atomic items：
   - 將 Gemini JSON text parse 成三面向 traits。
   - 拒絕 invalid JSON、missing aspect、unknown aspect 或非 list traits。
 - `EXP-001B`: Gemini trait-to-candidate mapper
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；mapper tests 覆蓋 schema-valid candidate output、stable candidate ID、source image traceability、duplicate trait handling 與 missing / unknown aspect failure paths。
   - 將 traits 轉成 stable `StyleGeneCandidate` records。
   - 保留 source image relative path。
 - `EXP-001C`: Gemini API client wrapper

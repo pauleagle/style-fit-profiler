@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import mimetypes
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import sys
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from .phase0 import StyleGeneCandidate
 
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -19,6 +22,7 @@ GEMINI_GENERATE_CONTENT_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 MAX_INLINE_IMAGE_BYTES = 19 * 1024 * 1024
+GEMINI_EXPERIMENTAL_CONFIDENCE = 0.5
 GEMINI_TRAIT_ASPECTS = (
     "rendering",
     "color_light",
@@ -83,6 +87,62 @@ def parse_gemini_trait_response(response_text: str) -> dict[str, tuple[str, ...]
     return traits_by_aspect
 
 
+def map_gemini_traits_to_candidates(
+    *,
+    traits_by_aspect: Mapping[str, Sequence[str]],
+    source_image: str,
+    model: str = DEFAULT_MODEL,
+    confidence: float = GEMINI_EXPERIMENTAL_CONFIDENCE,
+) -> dict[str, tuple[StyleGeneCandidate, ...]]:
+    """Map EXP-001B Gemini traits into schema-valid Phase 0 candidates."""
+
+    if not isinstance(traits_by_aspect, Mapping):
+        raise GeminiImageProbeError("Gemini trait response must be a mapping")
+
+    unknown_aspects = sorted(set(traits_by_aspect) - set(GEMINI_TRAIT_ASPECTS))
+    if unknown_aspects:
+        raise GeminiImageProbeError(f"Gemini trait response unknown aspect: {', '.join(unknown_aspects)}")
+
+    missing_aspects = sorted(set(GEMINI_TRAIT_ASPECTS) - set(traits_by_aspect))
+    if missing_aspects:
+        raise GeminiImageProbeError(f"Gemini trait response missing aspect: {', '.join(missing_aspects)}")
+
+    normalized_source_image = _normalize_source_image_path(source_image)
+    notes = f"gemini experimental extractor; model={model or 'unknown'}"
+    candidates_by_aspect: dict[str, tuple[StyleGeneCandidate, ...]] = {}
+
+    for aspect in GEMINI_TRAIT_ASPECTS:
+        aspect_traits = traits_by_aspect[aspect]
+        if isinstance(aspect_traits, str) or not isinstance(aspect_traits, Sequence):
+            raise GeminiImageProbeError(f"Gemini trait response aspect must be a list: {aspect}")
+
+        aspect_candidates: list[StyleGeneCandidate] = []
+        seen_candidate_ids: set[str] = set()
+        for trait in aspect_traits:
+            normalized_trait = _normalize_gemini_trait(trait=trait, aspect=aspect)
+            candidate_id = _gemini_candidate_id(
+                aspect=aspect,
+                trait=normalized_trait,
+                source_image=normalized_source_image,
+            )
+            if candidate_id in seen_candidate_ids:
+                continue
+            seen_candidate_ids.add(candidate_id)
+            aspect_candidates.append(
+                StyleGeneCandidate(
+                    id=candidate_id,
+                    prompt=normalized_trait,
+                    confidence=confidence,
+                    source_images=(normalized_source_image,),
+                    notes=notes,
+                )
+            )
+
+        candidates_by_aspect[aspect] = tuple(aspect_candidates)
+
+    return candidates_by_aspect
+
+
 def _normalize_gemini_trait(*, trait: Any, aspect: str) -> str:
     if not isinstance(trait, str):
         raise GeminiImageProbeError(f"Gemini trait must be a string: {aspect}")
@@ -92,6 +152,39 @@ def _normalize_gemini_trait(*, trait: Any, aspect: str) -> str:
         raise GeminiImageProbeError(f"Gemini trait must be non-empty: {aspect}")
 
     return normalized_trait
+
+
+def _normalize_source_image_path(source_image: str) -> str:
+    if not isinstance(source_image, str) or not source_image.strip():
+        raise GeminiImageProbeError("Gemini source image must be a relative path")
+
+    normalized_source_image = source_image.strip().replace("\\", "/")
+    windows_path = PureWindowsPath(normalized_source_image)
+    if (
+        PurePosixPath(normalized_source_image).is_absolute()
+        or bool(windows_path.drive)
+        or bool(windows_path.root)
+    ):
+        raise GeminiImageProbeError("Gemini source image must be a relative path")
+
+    return normalized_source_image
+
+
+def _gemini_candidate_id(*, aspect: str, trait: str, source_image: str) -> str:
+    trait_token = _gemini_trait_id_token(trait)
+    digest = hashlib.sha256(
+        f"{aspect}\0{trait}\0{source_image}".encode("utf-8")
+    ).hexdigest()[:8]
+    return f"{aspect}_{trait_token}_{digest}"
+
+
+def _gemini_trait_id_token(trait: str) -> str:
+    token_characters = [
+        character.lower() if character.isalnum() else "_"
+        for character in trait
+    ]
+    token = "_".join("".join(token_characters).split("_"))
+    return token or "gemini_trait"
 
 
 def guess_image_mime_type(image_path: Path) -> str:
