@@ -643,6 +643,207 @@ Open questions：
 - Gemini 回傳的 broad traits 是否需要 human review 後才可合併到 candidate output？
 - 大圖是否立即支援 File API，或先限制 inline request size？
 
+### EXP-002: Phase 0 Batch Reference Image Analysis
+
+狀態：Post-P0 Experimental Spec，尚未實作為正式 batch analyzer。
+前置條件：Phase 0 baseline 已完成並驗證；至少一個單張 reference image analysis flow 已跑通。
+
+Intent：
+
+- 在既有 Phase 0 reference image analysis 之上，提供 batch-oriented 的分析 wrapper，讓多張 reference images 可以依固定批次處理。
+- 將每一批 reference images 的分析結果彙整成同一份 `style_gene_candidates.json` 或同一組可合併的 batch fragments。
+- 保留 deterministic mock baseline，避免 batch orchestration 影響單張分析可測性。
+
+背景：
+
+- 單張 reference image analysis 適合早期驗證，但實務上常會遇到較大量圖片、需要分批送入模型或分段處理的情境。
+- Batch wrapper 的目標不是改變 Phase 0 的輸出契約，而是把 reference images 的輸入流程、分批策略、錯誤隔離與結果彙總流程標準化。
+- 這個 experimental spec 應支援未來不同 provider 的 batch flow，但不綁定特定 vision backend。
+
+Scope：
+
+- 新增 batch planner，將 reference image manifest records 分組成可處理的 batch。
+- 新增 batch runner，逐批執行 analysis，並保留 batch index、batch size、batch input paths 與 batch-level status。
+- 新增 batch result aggregator，將各批結果正規化成三個 aspects：
+  - `rendering`
+  - `color_light`
+  - `texture_artifacts`
+- 新增 batch failure isolation，避免單一 batch 失敗破壞其他 batch 的可用輸出。
+- 新增 batch-level traceability，讓每個 candidate gene 都能 trace back 到至少一個 batch 與一張 source image。
+- 支援 deterministic mock batch analysis，供 tests 與 early CLI 使用。
+
+Non-goals：
+
+- 不取代單張 Phase 0 analysis contract。
+- 不在 unit tests 中依賴真實 image analysis API。
+- 不直接覆蓋 `style_gene_pool.json`。
+- 不處理 human approval UI。
+- 不承諾 batch size 會自動最佳化或自動避開 provider quota。
+- 不在此階段定義多 provider routing policy。
+
+Input contract：
+
+- Input 仍來自 reference image manifest records。
+- Batch planner 必須以相對路徑或 manifest record reference 作為輸入，不可自行重新掃描原始目錄。
+- Batch size 與 batch ordering 必須可配置或可重現，避免同一組輸入在 mock mode 下產生不穩定結果。
+- 若某張 image 超出單批處理限制，wrapper 必須將其拆到後續 batch 或回報 spec-defined error。
+
+Output contract：
+
+- 每個 batch 必須產生 batch record，至少包含：
+  - batch index
+  - input reference image paths
+  - batch status
+  - batch-level error（若失敗）
+  - batch output paths
+- Aggregated output 必須維持 Phase 0 candidate schema：
+  - `version`
+  - `source`
+  - `aspects`
+- `source` 應能辨識為 batch analysis flow，而不是單張 probe flow。
+- 每個 candidate gene 的 `source_images` 必須保留原始 reference image relative path。
+- 若同一 trait 由多個 batch 提出，aggregator 必須能保留去重或合併後的穩定 ID 規則。
+
+Validation requirements：
+
+- Parser / aggregator tests 使用 fixture batch outputs，不打真 API。
+- Batch planner tests 必須覆蓋：
+  - 空 input
+  - 單批處理
+  - 多批處理
+  - 不同 batch size
+  - 非法 batch size
+- Batch runner tests 必須覆蓋：
+  - 某一 batch 失敗時其他 batch 仍可完成
+  - batch status 正確寫入
+  - deterministic ordering
+- Aggregator tests 必須覆蓋：
+  - aspect 分流正確
+  - duplicate candidate 處理
+  - missing aspect / invalid schema 的失敗路徑
+  - traceability 保留 source image relative paths
+
+Candidate experimental atomic items：
+
+- `EXP-002A`: Batch planner
+  - 狀態：planned。
+  - 將 manifest records 分組成 deterministic batches。
+  - 支援可配置 batch size 與 ordering rule。
+- `EXP-002B`: Batch runner
+  - 狀態：planned。
+  - 執行每一批 analysis，並記錄 batch-level status 與 error。
+  - 支援 fake client 與 mock backend。
+- `EXP-002C`: Batch result aggregator
+  - 狀態：planned。
+  - 將多批結果合併成單一 Phase 0 candidate output。
+  - 維持三面向 aspect contract。
+- `EXP-002D`: Batch failure isolation
+  - 狀態：planned。
+  - 確保單批失敗不會覆蓋其他 batch 的成功輸出。
+  - 失敗 batch 必須能被追蹤與重試。
+- `EXP-002E`: Batch integration test coverage
+  - 狀態：planned。
+  - 用 fixture 驗證多批流程、失敗隔離與 deterministic output。
+
+Open questions：
+
+- Batch planner 應先以固定張數切批，還是以檔案大小 / provider limit 切批？
+- Aggregated output 應直接覆蓋單一 `style_gene_candidates.json`，還是先保留 batch fragments 再由獨立 merge step 收斂？
+- Batch 失敗時應採部分成功輸出，還是預設 fail-fast？
+- 是否需要把 batch metadata 納入 run manifest，作為後續重試與 audit 的一部分？
+
+### EXP-003: Colab Notebook Wrapper for Phase 0
+
+狀態：Post-P0 Experimental Spec，尚未實作為正式 notebook wrapper。
+前置條件：Phase 0 baseline 已完成並驗證；至少一個可重現的本機 Phase 0 flow 已跑通。
+
+Intent：
+
+- 提供一個 Colab-friendly 的 wrapper，讓使用者可在 notebook 介面中執行 Phase 0 reference image analysis。
+- 讓 upload, analysis, preview, export 與 download 這些步驟對非 CLI 使用者更容易操作。
+- 保留核心 Phase 0 邏輯在本地或可重用的 library code 中，避免 notebook 成為唯一執行路徑。
+
+背景：
+
+- Phase 0 早期驗證常需要快速展示 reference image analysis、候選 genes 與輸出檔案。
+- Notebook wrapper 的價值在於把 existing flow 包裝成可逐 cell 操作的教學 / demo / review 介面，而不是新增另一套 business logic。
+- Colab 環境對檔案系統、環境變數與長時間運算都有額外限制，因此 wrapper 應優先考慮最小依賴與可中斷性。
+
+Scope：
+
+- 新增 notebook wrapper cells，涵蓋：
+  - runtime setup
+  - reference image upload
+  - Phase 0 config loading
+  - batch 或單張 analysis trigger
+  - candidate preview
+  - output download
+- 新增 notebook-friendly helper functions，讓核心 Phase 0 流程可被 notebook 重用。
+- 新增暫存資料夾與輸出下載流程，確保 notebook 執行結果可導出到本機。
+- 新增可選的 notebook status display，方便查看每個 reference image 與 batch 的處理狀態。
+
+Non-goals：
+
+- 不把 notebook wrapper 當作正式 production entrypoint。
+- 不在 notebook 中硬編碼任何 API key。
+- 不讓 notebook 取代 CLI、自動化測試或 library API。
+- 不在 notebook 中加入 human approval workflow。
+- 不在 notebook 中直接修改 `style_gene_pool.json`。
+- 不保證 Colab runtime 與本機 runtime 的完全一致性。
+
+Input contract：
+
+- Notebook 必須明確區分 uploaded files、local cached files 與 analysis outputs。
+- API key 或其他敏感資訊只能透過 notebook runtime secrets 或環境變數注入。
+- Notebook wrapper 必須可以接受既有 `style_profiler_config.json` 或其等價輸入。
+- 若 notebook 需要 reference images，應支援單張上傳與多張上傳兩種情境。
+
+Output contract：
+
+- Notebook 應產生與核心 Phase 0 flow 相同語意的輸出：
+  - `reference_image_manifest.json`
+  - `style_gene_candidates.json`
+  - batch / run metadata
+- Notebook wrapper 應保留輸出下載入口，讓使用者能將 analysis artifacts 匯出到本機。
+- Notebook 中的 preview 不得改變正式輸出內容。
+- 所有 notebook 產出的 candidate genes 仍必須通過既有 schema validator。
+
+Validation requirements：
+
+- Notebook cell tests 或 smoke checks 必須覆蓋：
+  - config loading
+  - image upload handling
+  - analysis trigger
+  - output generation
+  - download/export path
+- Notebook wrapper tests 必須使用 fake backend 或 mock analysis，不依賴真實 Colab runtime。
+- Notebook wrapper 不得破壞 deterministic mock baseline。
+
+Candidate experimental atomic items：
+
+- `EXP-003A`: Notebook runtime bootstrap
+  - 狀態：planned。
+  - 建立 Colab runtime setup 與依賴初始化 cell。
+- `EXP-003B`: Upload and staging helper
+  - 狀態：planned。
+  - 處理 reference image upload、暫存與 manifest generation。
+- `EXP-003C`: Notebook analysis runner
+  - 狀態：planned。
+  - 在 notebook 中呼叫 Phase 0 analysis flow，支援 mock backend 與 batch wrapper。
+- `EXP-003D`: Preview and export cells
+  - 狀態：planned。
+  - 顯示候選 genes、輸出 manifest，並提供下載路徑。
+- `EXP-003E`: Notebook smoke tests
+  - 狀態：planned。
+  - 驗證 wrapper 不破壞核心 Phase 0 contract。
+
+Open questions：
+
+- Notebook wrapper 應只面向 Colab，還是也要兼容本機 Jupyter？
+- Upload 後的 staging file 命名應以原檔名為主，還是以穩定 digest 為主？
+- Notebook 是否需要一鍵產生可下載 zip，包含 manifests 與 analysis artifacts？
+- Wrapper 應直接呼叫現有 CLI/library，還是先定義更薄的 notebook-specific adapter？
+
 ### CR-001: Appeal Point and Art Style Extraction
 
 狀態：Backlog，限 Phase 0 baseline 完成並驗證後再評估。
