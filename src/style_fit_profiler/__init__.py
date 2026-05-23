@@ -5,6 +5,14 @@ from .config import (
     ConfigValidationError,
     ReferenceImageAnalysisPolicy,
 )
+from .notebook import (
+    DEFAULT_COLAB_NOTEBOOK_NAME,
+    DEFAULT_COLAB_PROJECT_ROOT,
+    DEFAULT_COLAB_RUN_ID,
+    NotebookCell,
+    build_colab_runtime_bootstrap_cells,
+    build_colab_runtime_bootstrap_notebook,
+)
 from .phase0 import Phase0Error, Phase0Result, Phase0Status, run_phase0
 from .phase0 import (
     STYLE_GENE_CANDIDATE_ASPECTS,
@@ -37,6 +45,10 @@ from .phase0 import (
 __all__ = [
     "ALLOWED_REFERENCE_IMAGE_ASPECTS",
     "ConfigValidationError",
+    "DEFAULT_COLAB_NOTEBOOK_NAME",
+    "DEFAULT_COLAB_PROJECT_ROOT",
+    "DEFAULT_COLAB_RUN_ID",
+    "NotebookCell",
     "Phase0Error",
     "Phase0Result",
     "Phase0Status",
@@ -54,6 +66,8 @@ __all__ = [
     "ReferenceImageManifestRecord",
     "StyleGeneCandidate",
     "aggregate_phase0_batch_results",
+    "build_colab_runtime_bootstrap_cells",
+    "build_colab_runtime_bootstrap_notebook",
     "build_phase0_batch_candidates_document",
     "build_phase0_batch_run_report",
     "build_reference_image_manifest_records",

@@ -835,7 +835,8 @@ Validation requirements：
 Candidate experimental atomic items：
 
 - `EXP-003A`: Notebook runtime bootstrap
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；notebook bootstrap tests 覆蓋 Colab runtime setup cell、dependency check cell、ipynb-serializable bootstrap document 與 no hardcoded secret values。
   - 建立 Colab runtime setup 與依賴初始化 cell。
 - `EXP-003B`: Upload and staging helper
   - 狀態：planned。
