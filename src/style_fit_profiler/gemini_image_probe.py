@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import argparse
 import base64
+from dataclasses import dataclass
 import hashlib
 import json
 import mimetypes
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import sys
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -291,6 +292,32 @@ def extract_response_text(response: Mapping[str, Any]) -> str:
     raise GeminiImageProbeError("Gemini response did not include text")
 
 
+@dataclass(frozen=True)
+class GeminiImageAnalysisClient:
+    """EXP-001C injectable wrapper for Gemini image analysis calls."""
+
+    api_key: str
+    model: str = DEFAULT_MODEL
+    prompt: str = DEFAULT_ANALYSIS_PROMPT
+    timeout_seconds: int = 60
+    payload_builder: Callable[..., Mapping[str, Any]] = build_generate_content_payload
+    generate_content: Callable[..., Mapping[str, Any]] = call_gemini_generate_content
+
+    def build_payload(self, image_path: Path) -> Mapping[str, Any]:
+        return self.payload_builder(image_path=image_path, prompt=self.prompt)
+
+    def generate_content_response(self, image_path: Path) -> Mapping[str, Any]:
+        return self.generate_content(
+            api_key=self.api_key,
+            payload=self.build_payload(image_path),
+            model=self.model,
+            timeout_seconds=self.timeout_seconds,
+        )
+
+    def analyze_image(self, image_path: Path) -> str:
+        return extract_response_text(self.generate_content_response(image_path))
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Analyze one local image with Gemini and print Phase 0 style traits."
@@ -321,12 +348,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.prompt_file is not None
         else DEFAULT_ANALYSIS_PROMPT
     )
-    payload = build_generate_content_payload(image_path=args.image_path, prompt=prompt)
-    response = call_gemini_generate_content(
+    client = GeminiImageAnalysisClient(
         api_key=api_key,
-        payload=payload,
         model=args.model,
+        prompt=prompt,
     )
+    response = client.generate_content_response(args.image_path)
 
     if args.raw:
         print(json.dumps(response, ensure_ascii=False, indent=2))

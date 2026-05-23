@@ -11,6 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from style_fit_profiler.gemini_image_probe import (  # noqa: E402
     DEFAULT_ANALYSIS_PROMPT,
     GEMINI_TRAIT_ASPECTS,
+    GeminiImageAnalysisClient,
     GeminiImageProbeError,
     build_generate_content_payload,
     extract_response_text,
@@ -251,6 +252,80 @@ class GeminiTraitCandidateMapperTests(unittest.TestCase):
                 },
                 source_image="reference_images/ref-001.png",
             )
+
+
+class GeminiImageAnalysisClientTests(unittest.TestCase):
+    def test_exp_001c_client_uses_injected_payload_builder_and_transport(self):
+        calls = []
+
+        def payload_builder(*, image_path, prompt):
+            calls.append(("payload_builder", image_path, prompt))
+            return {"request": "payload"}
+
+        def generate_content(*, api_key, payload, model, timeout_seconds):
+            calls.append(("generate_content", api_key, payload, model, timeout_seconds))
+            return {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        '{"rendering":[],"color_light":[],'
+                                        '"texture_artifacts":[],"notes":""}'
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+
+        client = GeminiImageAnalysisClient(
+            api_key="test-api-key",
+            model="gemini-test-model",
+            prompt="custom prompt",
+            timeout_seconds=7,
+            payload_builder=payload_builder,
+            generate_content=generate_content,
+        )
+
+        response_text = client.analyze_image(Path("reference_images/ref-001.png"))
+
+        self.assertEqual(
+            response_text,
+            '{"rendering":[],"color_light":[],"texture_artifacts":[],"notes":""}',
+        )
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "payload_builder",
+                    Path("reference_images/ref-001.png"),
+                    "custom prompt",
+                ),
+                (
+                    "generate_content",
+                    "test-api-key",
+                    {"request": "payload"},
+                    "gemini-test-model",
+                    7,
+                ),
+            ],
+        )
+
+    def test_exp_001c_client_surfaces_transport_errors(self):
+        def generate_content(**kwargs):
+            raise GeminiImageProbeError("Gemini API HTTP 500: boom")
+
+        client = GeminiImageAnalysisClient(
+            api_key="test-api-key",
+            payload_builder=lambda **kwargs: {"request": "payload"},
+            generate_content=generate_content,
+        )
+
+        with self.assertRaisesRegex(GeminiImageProbeError, "HTTP 500"):
+            client.analyze_image(Path("reference_images/ref-001.png"))
 
 
 if __name__ == "__main__":

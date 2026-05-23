@@ -629,6 +629,8 @@ Candidate experimental atomic items：
   - 將 traits 轉成 stable `StyleGeneCandidate` records。
   - 保留 source image relative path。
 - `EXP-001C`: Gemini API client wrapper
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；client wrapper tests 覆蓋 injected payload builder、injected transport、response text extraction 與 transport error propagation，unit tests 不呼叫真實 Gemini API。
   - 抽出目前 probe 的 REST call 與 image inline payload builder。
   - 支援 dependency injection，讓 tests 不打真 API。
 - `EXP-001D`: Opt-in Gemini Phase 0 extractor
