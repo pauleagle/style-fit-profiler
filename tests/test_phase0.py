@@ -17,11 +17,13 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     STYLE_GENE_CANDIDATE_FIELDS,
     STYLE_GENE_CANDIDATES_SOURCE,
     STYLE_GENE_CANDIDATES_VERSION,
+    Phase0Batch,
     StyleGeneCandidate,
     build_style_gene_candidates_document,
     deterministic_mock_phase0_extractor,
     discover_reference_images,
     extract_style_gene_candidates,
+    plan_phase0_batches,
     run_phase0,
     validate_style_gene_candidate_aspects,
     validate_style_gene_candidates_document,
@@ -489,6 +491,107 @@ class ExtractorInterfaceTests(unittest.TestCase):
             candidates_by_aspect["rendering"][0].id,
             "rendering_mock_ref_001",
         )
+
+
+class Phase0BatchPlannerTests(unittest.TestCase):
+    def test_exp_002a_empty_input_returns_no_batches(self):
+        self.assertEqual(
+            plan_phase0_batches(
+                reference_image_manifest_records=(),
+                batch_size=2,
+            ),
+            (),
+        )
+
+    def test_exp_002a_single_batch_preserves_batch_metadata(self):
+        manifest_records = (
+            {
+                "path": "reference_images/b.png",
+                "file_hash": "sha256:b",
+                "image_size": {"width": 2, "height": 3},
+                "analysis_status": "pending",
+            },
+            {
+                "path": "reference_images/a.png",
+                "file_hash": "sha256:a",
+                "image_size": {"width": 2, "height": 3},
+                "analysis_status": "pending",
+            },
+        )
+
+        batches = plan_phase0_batches(
+            reference_image_manifest_records=manifest_records,
+            batch_size=5,
+        )
+
+        self.assertEqual(
+            batches,
+            (
+                Phase0Batch(
+                    index=0,
+                    input_paths=("reference_images/a.png", "reference_images/b.png"),
+                    records=(manifest_records[1], manifest_records[0]),
+                ),
+            ),
+        )
+
+    def test_exp_002a_multiple_batches_are_deterministic_by_path(self):
+        manifest_records = (
+            {"path": "reference_images/c.png"},
+            {"path": "reference_images/a.png"},
+            {"path": "reference_images/b.png"},
+        )
+
+        batches = plan_phase0_batches(
+            reference_image_manifest_records=manifest_records,
+            batch_size=2,
+        )
+
+        self.assertEqual(
+            [batch.input_paths for batch in batches],
+            [
+                ("reference_images/a.png", "reference_images/b.png"),
+                ("reference_images/c.png",),
+            ],
+        )
+        self.assertEqual([batch.index for batch in batches], [0, 1])
+
+    def test_exp_002a_supports_input_ordering_rule(self):
+        manifest_records = (
+            {"path": "reference_images/c.png"},
+            {"path": "reference_images/a.png"},
+            {"path": "reference_images/b.png"},
+        )
+
+        batches = plan_phase0_batches(
+            reference_image_manifest_records=manifest_records,
+            batch_size=2,
+            ordering="input",
+        )
+
+        self.assertEqual(
+            [batch.input_paths for batch in batches],
+            [
+                ("reference_images/c.png", "reference_images/a.png"),
+                ("reference_images/b.png",),
+            ],
+        )
+
+    def test_exp_002a_rejects_invalid_batch_size_or_ordering(self):
+        for invalid_batch_size in (0, -1, True, "2"):
+            with self.subTest(invalid_batch_size=invalid_batch_size):
+                with self.assertRaisesRegex(Phase0Error, "batch size"):
+                    plan_phase0_batches(
+                        reference_image_manifest_records=(),
+                        batch_size=invalid_batch_size,
+                    )
+
+        with self.assertRaisesRegex(Phase0Error, "batch ordering"):
+            plan_phase0_batches(
+                reference_image_manifest_records=(),
+                batch_size=1,
+                ordering="random",
+            )
 
 
 class DeterministicMockExtractorTests(unittest.TestCase):

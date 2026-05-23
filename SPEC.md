@@ -734,7 +734,8 @@ Validation requirements：
 Candidate experimental atomic items：
 
 - `EXP-002A`: Batch planner
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；planner tests 覆蓋 empty input、single batch、multiple batches、不同 batch size、invalid batch size 與 deterministic ordering rule。
   - 將 manifest records 分組成 deterministic batches。
   - 支援可配置 batch size 與 ordering rule。
 - `EXP-002B`: Batch runner

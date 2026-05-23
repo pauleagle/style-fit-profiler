@@ -86,6 +86,15 @@ class StyleGeneCandidate:
         }
 
 
+@dataclass(frozen=True)
+class Phase0Batch:
+    """Deterministic EXP-002A group of reference image manifest records."""
+
+    index: int
+    input_paths: tuple[str, ...]
+    records: tuple["ReferenceImageManifestRecord", ...]
+
+
 ReferenceImageManifestRecord = Mapping[str, Any]
 CandidateGenesByAspect = Mapping[str, Sequence[StyleGeneCandidate]]
 
@@ -113,6 +122,37 @@ def extract_style_gene_candidates(
     }
     validate_style_gene_candidate_aspects(candidates_by_aspect)
     return candidates_by_aspect
+
+
+def plan_phase0_batches(
+    *,
+    reference_image_manifest_records: Sequence[ReferenceImageManifestRecord],
+    batch_size: int,
+    ordering: str = "path",
+) -> tuple[Phase0Batch, ...]:
+    """Plan EXP-002A deterministic batches from manifest records."""
+
+    if type(batch_size) is not int or batch_size < 1:
+        raise Phase0Error("Phase 0 batch size must be a positive integer")
+    if ordering not in {"path", "input"}:
+        raise Phase0Error(f"Phase 0 batch ordering is unsupported: {ordering}")
+
+    planned_records = tuple(reference_image_manifest_records)
+    if ordering == "path":
+        planned_records = tuple(sorted(planned_records, key=_manifest_record_sort_key))
+
+    batches: list[Phase0Batch] = []
+    for batch_index, start_index in enumerate(range(0, len(planned_records), batch_size)):
+        batch_records = planned_records[start_index : start_index + batch_size]
+        batches.append(
+            Phase0Batch(
+                index=batch_index,
+                input_paths=tuple(_manifest_record_path(record) for record in batch_records),
+                records=batch_records,
+            )
+        )
+
+    return tuple(batches)
 
 
 def validate_style_gene_candidate_aspects(
