@@ -653,7 +653,7 @@ Open questions：
 
 ### EXP-002: Phase 0 Batch Reference Image Analysis
 
-狀態：Post-P0 Experimental Spec，尚未實作為正式 batch analyzer。
+狀態：Post-P0 Experimental Spec，experimental batch analyzer helpers 已完成；仍為 opt-in，尚未取代 baseline default。
 前置條件：Phase 0 baseline 已完成並驗證；至少一個單張 reference image analysis flow 已跑通。
 
 Intent：
@@ -754,7 +754,8 @@ Candidate experimental atomic items：
   - 確保單批失敗不會覆蓋其他 batch 的成功輸出。
   - 失敗 batch 必須能被追蹤與重試。
 - `EXP-002E`: Batch integration test coverage
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；integration fixture 覆蓋 planner → runner → aggregator → report 的多批流程、失敗隔離、retry batch selection 與 deterministic output。
   - 用 fixture 驗證多批流程、失敗隔離與 deterministic output。
 
 Open questions：

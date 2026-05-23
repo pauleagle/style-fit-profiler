@@ -956,6 +956,85 @@ class Phase0BatchFailureIsolationTests(unittest.TestCase):
         self.assertEqual(retry_batches, (batches[1], batches[2]))
 
 
+class Phase0BatchIntegrationTests(unittest.TestCase):
+    def test_exp_002e_multi_batch_flow_is_failure_isolated_and_deterministic(self):
+        manifest_records = (
+            {"path": "reference_images/d.png"},
+            {"path": "reference_images/b.png"},
+            {"path": "reference_images/a.png"},
+            {"path": "reference_images/c.png"},
+            {"path": "reference_images/e.png"},
+        )
+
+        def run_fixture_flow():
+            batches = plan_phase0_batches(
+                reference_image_manifest_records=manifest_records,
+                batch_size=2,
+            )
+
+            def analyzer(batch):
+                if batch.index == 1:
+                    raise Phase0Error("fixture batch failure")
+
+                first_path = batch.input_paths[0]
+                source_token = Path(first_path).stem
+                return {
+                    "rendering": (
+                        StyleGeneCandidate(
+                            id=f"rendering_fixture_{source_token}",
+                            prompt=f"rendering trait from {source_token}",
+                            confidence=0.5,
+                            source_images=(first_path,),
+                            notes=f"batch {batch.index}",
+                        ),
+                    ),
+                    "color_light": (),
+                    "texture_artifacts": (
+                        StyleGeneCandidate(
+                            id=f"texture_artifacts_fixture_{source_token}",
+                            prompt=f"texture trait from {source_token}",
+                            confidence=0.5,
+                            source_images=(first_path,),
+                            notes=f"batch {batch.index}",
+                        ),
+                    ),
+                }
+
+            batch_results = run_phase0_batches(batches=batches, analyzer=analyzer)
+            document = build_phase0_batch_candidates_document(batch_results=batch_results)
+            report = build_phase0_batch_run_report(batch_results=batch_results)
+            retry_batches = select_failed_phase0_batches(
+                batches=batches,
+                batch_results=batch_results,
+            )
+            return batches, batch_results, document, report, retry_batches
+
+        first_run = run_fixture_flow()
+        second_run = run_fixture_flow()
+
+        _, first_results, first_document, first_report, first_retry_batches = first_run
+        validate_style_gene_candidates_document(first_document)
+        self.assertEqual(first_document, second_run[2])
+        self.assertEqual(first_report, second_run[3])
+        self.assertEqual(
+            [result.status for result in first_results],
+            [
+                Phase0BatchStatus.COMPLETED,
+                Phase0BatchStatus.FAILED,
+                Phase0BatchStatus.COMPLETED,
+            ],
+        )
+        self.assertEqual(
+            [candidate["source_images"] for candidate in first_document["aspects"]["rendering"]],
+            [["reference_images/a.png"], ["reference_images/e.png"]],
+        )
+        self.assertEqual(first_report["summary"]["retryable_batch_indexes"], [1])
+        self.assertEqual(
+            [batch.input_paths for batch in first_retry_batches],
+            [("reference_images/c.png", "reference_images/d.png")],
+        )
+
+
 class DeterministicMockExtractorTests(unittest.TestCase):
     def test_p0_08_mock_extractor_returns_equivalent_candidates_for_same_input(self):
         manifest_records = (
