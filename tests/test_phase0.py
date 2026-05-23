@@ -15,12 +15,15 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     Phase0Status,
     STYLE_GENE_CANDIDATE_ASPECTS,
     STYLE_GENE_CANDIDATE_FIELDS,
+    BATCH_STYLE_GENE_CANDIDATES_SOURCE,
     STYLE_GENE_CANDIDATES_SOURCE,
     STYLE_GENE_CANDIDATES_VERSION,
     Phase0Batch,
     Phase0BatchResult,
     Phase0BatchStatus,
     StyleGeneCandidate,
+    aggregate_phase0_batch_results,
+    build_phase0_batch_candidates_document,
     build_style_gene_candidates_document,
     deterministic_mock_phase0_extractor,
     discover_reference_images,
@@ -712,6 +715,152 @@ class Phase0BatchRunnerTests(unittest.TestCase):
                 ("reference_images/c.png",),
             ],
         )
+
+
+class Phase0BatchAggregatorTests(unittest.TestCase):
+    def test_exp_002c_aggregator_merges_completed_batches_by_aspect(self):
+        batch_results = (
+            Phase0BatchResult(
+                batch_index=0,
+                input_paths=("reference_images/a.png",),
+                status=Phase0BatchStatus.COMPLETED,
+                candidates_by_aspect={
+                    "rendering": (
+                        StyleGeneCandidate(
+                            id="rendering_a",
+                            prompt="rendering trait a",
+                            confidence=0.5,
+                            source_images=("reference_images/a.png",),
+                            notes="batch 0",
+                        ),
+                    ),
+                    "color_light": (),
+                    "texture_artifacts": (),
+                },
+            ),
+            Phase0BatchResult(
+                batch_index=1,
+                input_paths=("reference_images/b.png",),
+                status=Phase0BatchStatus.COMPLETED,
+                candidates_by_aspect={
+                    "rendering": (),
+                    "color_light": (
+                        StyleGeneCandidate(
+                            id="color_light_b",
+                            prompt="color trait b",
+                            confidence=0.6,
+                            source_images=("reference_images/b.png",),
+                            notes="batch 1",
+                        ),
+                    ),
+                    "texture_artifacts": (),
+                },
+            ),
+        )
+
+        candidates_by_aspect = aggregate_phase0_batch_results(batch_results)
+        document = build_phase0_batch_candidates_document(
+            batch_results=batch_results,
+        )
+
+        validate_style_gene_candidate_aspects(candidates_by_aspect)
+        validate_style_gene_candidates_document(document)
+        self.assertEqual(document["source"], BATCH_STYLE_GENE_CANDIDATES_SOURCE)
+        self.assertEqual(
+            [candidate.id for candidate in candidates_by_aspect["rendering"]],
+            ["rendering_a"],
+        )
+        self.assertEqual(
+            [candidate.id for candidate in candidates_by_aspect["color_light"]],
+            ["color_light_b"],
+        )
+
+    def test_exp_002c_aggregator_merges_duplicate_candidate_source_images(self):
+        duplicate_candidate_a = StyleGeneCandidate(
+            id="rendering_shared_trait",
+            prompt="shared rendering trait",
+            confidence=0.5,
+            source_images=("reference_images/a.png",),
+            notes="batch 0",
+        )
+        duplicate_candidate_b = StyleGeneCandidate(
+            id="rendering_shared_trait",
+            prompt="shared rendering trait",
+            confidence=0.5,
+            source_images=("reference_images/b.png", "reference_images/a.png"),
+            notes="batch 1",
+        )
+
+        candidates_by_aspect = aggregate_phase0_batch_results(
+            (
+                Phase0BatchResult(
+                    batch_index=0,
+                    input_paths=("reference_images/a.png",),
+                    status=Phase0BatchStatus.COMPLETED,
+                    candidates_by_aspect={
+                        "rendering": (duplicate_candidate_a,),
+                        "color_light": (),
+                        "texture_artifacts": (),
+                    },
+                ),
+                Phase0BatchResult(
+                    batch_index=1,
+                    input_paths=("reference_images/b.png",),
+                    status=Phase0BatchStatus.COMPLETED,
+                    candidates_by_aspect={
+                        "rendering": (duplicate_candidate_b,),
+                        "color_light": (),
+                        "texture_artifacts": (),
+                    },
+                ),
+            )
+        )
+
+        self.assertEqual(len(candidates_by_aspect["rendering"]), 1)
+        self.assertEqual(
+            candidates_by_aspect["rendering"][0].source_images,
+            ("reference_images/a.png", "reference_images/b.png"),
+        )
+
+    def test_exp_002c_aggregator_rejects_missing_aspect_or_invalid_schema(self):
+        with self.assertRaisesRegex(Phase0Error, "missing aspect"):
+            aggregate_phase0_batch_results(
+                (
+                    Phase0BatchResult(
+                        batch_index=0,
+                        input_paths=("reference_images/a.png",),
+                        status=Phase0BatchStatus.COMPLETED,
+                        candidates_by_aspect={
+                            "rendering": (),
+                            "color_light": (),
+                        },
+                    ),
+                )
+            )
+
+        with self.assertRaisesRegex(Phase0Error, "source_images"):
+            build_phase0_batch_candidates_document(
+                batch_results=(
+                    Phase0BatchResult(
+                        batch_index=0,
+                        input_paths=("reference_images/a.png",),
+                        status=Phase0BatchStatus.COMPLETED,
+                        candidates_by_aspect={
+                            "rendering": (
+                                StyleGeneCandidate(
+                                    id="rendering_invalid",
+                                    prompt="invalid",
+                                    confidence=0.5,
+                                    source_images=(),
+                                    notes="",
+                                ),
+                            ),
+                            "color_light": (),
+                            "texture_artifacts": (),
+                        },
+                    ),
+                )
+            )
 
 
 class DeterministicMockExtractorTests(unittest.TestCase):

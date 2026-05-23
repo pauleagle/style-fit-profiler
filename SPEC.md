@@ -744,7 +744,8 @@ Candidate experimental atomic items：
   - 執行每一批 analysis，並記錄 batch-level status 與 error。
   - 支援 fake client 與 mock backend。
 - `EXP-002C`: Batch result aggregator
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；aggregator tests 覆蓋 aspect merge、batch-specific source、duplicate candidate source_images merge、missing aspect 與 invalid schema failure paths。
   - 將多批結果合併成單一 Phase 0 candidate output。
   - 維持三面向 aspect contract。
 - `EXP-002D`: Batch failure isolation

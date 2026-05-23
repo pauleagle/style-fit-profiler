@@ -27,6 +27,7 @@ SUPPORTED_REFERENCE_IMAGE_EXTENSIONS = frozenset(
 
 STYLE_GENE_CANDIDATES_VERSION = "0.1.0"
 STYLE_GENE_CANDIDATES_SOURCE = "phase0_reference_image_analysis"
+BATCH_STYLE_GENE_CANDIDATES_SOURCE = "phase0_batch_reference_image_analysis"
 STYLE_GENE_CANDIDATE_ASPECTS = ALLOWED_REFERENCE_IMAGE_ASPECTS
 STYLE_GENE_CANDIDATE_FIELDS = (
     "id",
@@ -212,6 +213,84 @@ def run_phase0_batches(
     return tuple(results)
 
 
+def aggregate_phase0_batch_results(
+    batch_results: Sequence[Phase0BatchResult],
+) -> dict[str, tuple[StyleGeneCandidate, ...]]:
+    """Aggregate EXP-002C successful batch candidates into Phase 0 aspects."""
+
+    candidates_by_aspect: dict[str, list[StyleGeneCandidate]] = {
+        aspect: [] for aspect in STYLE_GENE_CANDIDATE_ASPECTS
+    }
+    candidate_index_by_id: dict[str, tuple[str, int]] = {}
+
+    for batch_result in batch_results:
+        if batch_result.status == Phase0BatchStatus.FAILED:
+            continue
+        if batch_result.candidates_by_aspect is None:
+            raise Phase0Error(
+                f"Phase 0 batch result missing candidates: {batch_result.batch_index}"
+            )
+
+        validate_style_gene_candidate_aspects(batch_result.candidates_by_aspect)
+        for aspect in STYLE_GENE_CANDIDATE_ASPECTS:
+            for candidate in batch_result.candidates_by_aspect[aspect]:
+                existing_location = candidate_index_by_id.get(candidate.id)
+                if existing_location is None:
+                    candidate_index_by_id[candidate.id] = (
+                        aspect,
+                        len(candidates_by_aspect[aspect]),
+                    )
+                    candidates_by_aspect[aspect].append(candidate)
+                    continue
+
+                existing_aspect, existing_index = existing_location
+                if existing_aspect != aspect:
+                    raise Phase0Error(
+                        f"Phase 0 batch candidate id reused across aspects: {candidate.id}"
+                    )
+                candidates_by_aspect[aspect][existing_index] = _merge_style_gene_candidate_sources(
+                    candidates_by_aspect[aspect][existing_index],
+                    candidate,
+                )
+
+    return {
+        aspect: tuple(candidates)
+        for aspect, candidates in candidates_by_aspect.items()
+    }
+
+
+def build_phase0_batch_candidates_document(
+    *,
+    batch_results: Sequence[Phase0BatchResult],
+) -> dict[str, Any]:
+    """Build an EXP-002C batch analysis style_gene_candidates document."""
+
+    document = build_style_gene_candidates_document(
+        candidates_by_aspect=aggregate_phase0_batch_results(batch_results),
+        source=BATCH_STYLE_GENE_CANDIDATES_SOURCE,
+    )
+    validate_style_gene_candidates_document(document)
+    return document
+
+
+def _merge_style_gene_candidate_sources(
+    first: StyleGeneCandidate,
+    second: StyleGeneCandidate,
+) -> StyleGeneCandidate:
+    source_images = list(first.source_images)
+    for source_image in second.source_images:
+        if source_image not in source_images:
+            source_images.append(source_image)
+
+    return StyleGeneCandidate(
+        id=first.id,
+        prompt=first.prompt,
+        confidence=first.confidence,
+        source_images=tuple(source_images),
+        notes=first.notes,
+    )
+
+
 def validate_style_gene_candidate_aspects(
     candidates_by_aspect: Mapping[str, Sequence[StyleGeneCandidate]],
 ) -> None:
@@ -300,6 +379,7 @@ def _style_gene_id_token(source_image: str) -> str:
 def build_style_gene_candidates_document(
     *,
     candidates_by_aspect: Mapping[str, Sequence[StyleGeneCandidate]] | None = None,
+    source: str = STYLE_GENE_CANDIDATES_SOURCE,
 ) -> dict[str, Any]:
     """Build the P0-05 style_gene_candidates.json document shape."""
 
@@ -307,7 +387,7 @@ def build_style_gene_candidates_document(
 
     return {
         "version": STYLE_GENE_CANDIDATES_VERSION,
-        "source": STYLE_GENE_CANDIDATES_SOURCE,
+        "source": source,
         "aspects": {
             aspect: [
                 candidate.to_json_record()
