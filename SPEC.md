@@ -545,7 +545,7 @@ Phase 0 的第一版實作目標是先完成 deterministic / mock-friendly 的�
 
 ### EXP-001: Gemini Image Analysis Extractor
 
-狀態：Post-P0 Experimental Spec，尚未實作為正式 extractor。
+狀態：Post-P0 Experimental Spec，experimental extractor 已完成；仍為 opt-in，尚未取代 baseline default。
 前置條件：Phase 0 baseline 已完成並驗證；manual Gemini image probe 已跑通。
 
 Intent：
@@ -639,6 +639,8 @@ Candidate experimental atomic items：
   - 實作符合 `Phase0Extractor` 的 extractor。
   - 明確 opt-in，不改 deterministic mock default。
 - `EXP-001E`: Manual integration command
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；manual command tests 覆蓋 CLI options、missing `GEMINI_API_KEY` guard 與 fake-client raw output path；README 已文件化 PowerShell 指令、環境變數與安全注意事項。
   - 保留或整理 `gemini_image_probe.py` 作為手動驗證入口。
   - 文件化本機圖片測試指令、環境變數與安全注意事項。
 

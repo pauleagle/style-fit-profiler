@@ -372,7 +372,14 @@ def _manifest_record_source_image(record: Mapping[str, Any]) -> str:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Analyze one local image with Gemini and print Phase 0 style traits."
+        description="Analyze one local image with Gemini and print Phase 0 style traits.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Example:\n"
+            "  $env:PYTHONPATH = 'src'\n"
+            "  $env:GEMINI_API_KEY = '<your key>'\n"
+            "  python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png"
+        ),
     )
     parser.add_argument("image_path", type=Path, help="Path to a local image file.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Gemini model name.")

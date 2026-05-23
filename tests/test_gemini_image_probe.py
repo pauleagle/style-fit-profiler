@@ -1,9 +1,13 @@
 from pathlib import Path
+from contextlib import redirect_stdout
 import hashlib
+import io
 import json
+import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +22,9 @@ from style_fit_profiler.gemini_image_probe import (  # noqa: E402
     build_generate_content_payload,
     extract_response_text,
     guess_image_mime_type,
+    main,
     map_gemini_traits_to_candidates,
+    parse_args,
     parse_gemini_trait_response,
 )
 from style_fit_profiler.config import ReferenceImageAnalysisPolicy  # noqa: E402
@@ -467,6 +473,73 @@ class GeminiPhase0ExtractorTests(unittest.TestCase):
                     },
                 )
             )
+
+
+class GeminiManualIntegrationCommandTests(unittest.TestCase):
+    def test_exp_001e_manual_command_exposes_probe_options(self):
+        args = parse_args(
+            [
+                "reference_images/ref-001.png",
+                "--model",
+                "gemini-test-model",
+                "--prompt-file",
+                "prompt.txt",
+                "--raw",
+            ]
+        )
+
+        self.assertEqual(args.image_path, Path("reference_images/ref-001.png"))
+        self.assertEqual(args.model, "gemini-test-model")
+        self.assertEqual(args.prompt_file, Path("prompt.txt"))
+        self.assertTrue(args.raw)
+
+    def test_exp_001e_manual_command_requires_env_api_key_before_api_call(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(GeminiImageProbeError, "GEMINI_API_KEY"):
+                main(["reference_images/ref-001.png"])
+
+    def test_exp_001e_manual_command_uses_client_wrapper_without_real_api(self):
+        calls = []
+
+        class FakeClient:
+            def __init__(self, *, api_key, model, prompt):
+                calls.append(("init", api_key, model, prompt))
+
+            def generate_content_response(self, image_path):
+                calls.append(("generate_content_response", image_path))
+                return {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": (
+                                            '{"rendering":[],"color_light":[],'
+                                            '"texture_artifacts":[],"notes":""}'
+                                        )
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}, clear=True),
+            patch("style_fit_profiler.gemini_image_probe.GeminiImageAnalysisClient", FakeClient),
+            redirect_stdout(io.StringIO()) as stdout,
+        ):
+            result = main(["reference_images/ref-001.png", "--raw"])
+
+        self.assertEqual(result, 0)
+        self.assertIn('"candidates"', stdout.getvalue())
+        self.assertEqual(
+            calls,
+            [
+                ("init", "test-api-key", "gemini-2.5-flash", DEFAULT_ANALYSIS_PROMPT),
+                ("generate_content_response", Path("reference_images/ref-001.png")),
+            ],
+        )
 
 
 if __name__ == "__main__":

@@ -72,6 +72,33 @@ Phase 0 預期分成三個面向：
 - 輸出 `style_gene_candidates.json`
 - 讓使用者審查、刪改或合併候選 genes 到 `style_gene_pool.json`
 
+#### Manual Gemini Image Probe
+
+EXP-001 保留一個手動 Gemini 圖片分析入口，供本機確認單張 reference image 是否能回傳 Phase 0 三面向 traits。此入口不是預設 Phase 0 backend，也不納入 CI；正式 Phase 0 baseline 仍使用 deterministic mock extractor，Gemini extractor 必須明確 opt in。
+
+PowerShell 範例：
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:GEMINI_API_KEY = "<your key>"
+python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png
+```
+
+可選參數：
+
+```powershell
+python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --model gemini-2.5-flash
+python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --raw
+python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --prompt-file prompts/phase0-gemini.txt
+```
+
+安全注意事項：
+
+- `GEMINI_API_KEY` 只放在環境變數，不寫入 repo、README、SPEC、config 或 commit。
+- 本命令會把圖片內容送到 Gemini API；不要用未準備送出本機的私人或敏感圖片。
+- Prompt 明確要求不要產生 artist names、copyrighted character names 或 private identity claims；輸出仍需人工審查。
+- 若圖片超過 inline request size，先停止並改走後續 File API flow；不要在此手動 probe 中硬塞大檔。
+
 ### Phase 1：互動式風格探索
 
 Phase 1 會建立第一代候選圖，讓使用者用直覺選擇喜歡的圖片。
