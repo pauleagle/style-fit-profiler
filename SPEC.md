@@ -634,6 +634,8 @@ Candidate experimental atomic items：
   - 抽出目前 probe 的 REST call 與 image inline payload builder。
   - 支援 dependency injection，讓 tests 不打真 API。
 - `EXP-001D`: Opt-in Gemini Phase 0 extractor
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；extractor tests 覆蓋 manifest-record input、fake Gemini client、P0-06 / P0-09 compatible output、explicit run_phase0 opt-in、API failure source traceability 與 no gene pool overwrite。
   - 實作符合 `Phase0Extractor` 的 extractor。
   - 明確 opt-in，不改 deterministic mock default。
 - `EXP-001E`: Manual integration command

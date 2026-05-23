@@ -318,6 +318,58 @@ class GeminiImageAnalysisClient:
         return extract_response_text(self.generate_content_response(image_path))
 
 
+@dataclass(frozen=True)
+class GeminiPhase0Extractor:
+    """EXP-001D opt-in Phase 0 extractor backed by Gemini image analysis."""
+
+    project_root: Path
+    client: Any
+    model: str | None = None
+
+    def __call__(
+        self,
+        reference_image_manifest_records: Sequence[Mapping[str, Any]],
+    ) -> dict[str, tuple[StyleGeneCandidate, ...]]:
+        candidates_by_aspect: dict[str, list[StyleGeneCandidate]] = {
+            aspect: [] for aspect in GEMINI_TRAIT_ASPECTS
+        }
+        seen_candidate_ids: set[str] = set()
+
+        for record in reference_image_manifest_records:
+            source_image = _manifest_record_source_image(record)
+            try:
+                response_text = self.client.analyze_image(self.project_root / source_image)
+            except GeminiImageProbeError as error:
+                raise GeminiImageProbeError(
+                    f"Gemini image analysis failed for {source_image}: {error}"
+                ) from error
+
+            record_candidates_by_aspect = map_gemini_traits_to_candidates(
+                traits_by_aspect=parse_gemini_trait_response(response_text),
+                source_image=source_image,
+                model=self.model or getattr(self.client, "model", DEFAULT_MODEL),
+            )
+            for aspect in GEMINI_TRAIT_ASPECTS:
+                for candidate in record_candidates_by_aspect[aspect]:
+                    if candidate.id in seen_candidate_ids:
+                        continue
+                    seen_candidate_ids.add(candidate.id)
+                    candidates_by_aspect[aspect].append(candidate)
+
+        return {
+            aspect: tuple(candidates)
+            for aspect, candidates in candidates_by_aspect.items()
+        }
+
+
+def _manifest_record_source_image(record: Mapping[str, Any]) -> str:
+    if not isinstance(record, Mapping):
+        raise GeminiImageProbeError("Gemini extractor manifest record must be an object")
+
+    path = record.get("path")
+    return _normalize_source_image_path(path)
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Analyze one local image with Gemini and print Phase 0 style traits."

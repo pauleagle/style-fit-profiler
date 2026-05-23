@@ -1,5 +1,6 @@
 from pathlib import Path
 import hashlib
+import json
 import sys
 import tempfile
 import unittest
@@ -13,17 +14,32 @@ from style_fit_profiler.gemini_image_probe import (  # noqa: E402
     GEMINI_TRAIT_ASPECTS,
     GeminiImageAnalysisClient,
     GeminiImageProbeError,
+    GeminiPhase0Extractor,
     build_generate_content_payload,
     extract_response_text,
     guess_image_mime_type,
     map_gemini_traits_to_candidates,
     parse_gemini_trait_response,
 )
+from style_fit_profiler.config import ReferenceImageAnalysisPolicy  # noqa: E402
 from style_fit_profiler.phase0 import (  # noqa: E402
     build_style_gene_candidates_document,
+    run_phase0,
     validate_style_gene_candidate_aspects,
     validate_style_gene_candidates_document,
 )
+
+
+def _png_header_bytes(*, width, height):
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + (13).to_bytes(4, "big")
+        + b"IHDR"
+        + width.to_bytes(4, "big")
+        + height.to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + b"\x00\x00\x00\x00"
+    )
 
 
 class GeminiImageProbeTests(unittest.TestCase):
@@ -326,6 +342,131 @@ class GeminiImageAnalysisClientTests(unittest.TestCase):
 
         with self.assertRaisesRegex(GeminiImageProbeError, "HTTP 500"):
             client.analyze_image(Path("reference_images/ref-001.png"))
+
+
+class GeminiPhase0ExtractorTests(unittest.TestCase):
+    def test_exp_001d_extractor_reads_manifest_records_and_outputs_valid_candidates(self):
+        class FakeClient:
+            model = "gemini-fake-model"
+
+            def __init__(self):
+                self.calls = []
+
+            def analyze_image(self, image_path):
+                self.calls.append(image_path)
+                return """
+                {
+                  "rendering": ["clean linework"],
+                  "color_light": ["soft warm rim light"],
+                  "texture_artifacts": ["subtle paper grain"],
+                  "notes": "fixture response"
+                }
+                """
+
+        fake_client = FakeClient()
+        extractor = GeminiPhase0Extractor(
+            project_root=Path("C:/project"),
+            client=fake_client,
+        )
+
+        candidates_by_aspect = extractor(
+            (
+                {
+                    "path": "reference_images/ref-001.png",
+                    "file_hash": "sha256:abc",
+                    "image_size": {"width": 2, "height": 3},
+                    "analysis_status": "pending",
+                },
+            )
+        )
+
+        validate_style_gene_candidate_aspects(candidates_by_aspect)
+        candidate_document = build_style_gene_candidates_document(
+            candidates_by_aspect=candidates_by_aspect
+        )
+        validate_style_gene_candidates_document(candidate_document)
+
+        self.assertEqual(fake_client.calls, [Path("C:/project/reference_images/ref-001.png")])
+        self.assertEqual(
+            candidates_by_aspect["rendering"][0].source_images,
+            ("reference_images/ref-001.png",),
+        )
+        self.assertIn("gemini-fake-model", candidates_by_aspect["rendering"][0].notes)
+
+    def test_exp_001d_extractor_is_opt_in_for_run_phase0(self):
+        class FakeClient:
+            model = "gemini-fake-model"
+
+            def analyze_image(self, image_path):
+                return """
+                {
+                  "rendering": ["clean linework"],
+                  "color_light": [],
+                  "texture_artifacts": [],
+                  "notes": "fixture response"
+                }
+                """
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "run-001"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+            gene_pool_path = project_root / "style_gene_pool.json"
+            original_gene_pool = '{"version":"0.1.0","genes":{"rendering":[]}}\n'
+            gene_pool_path.write_text(original_gene_pool, encoding="utf-8")
+
+            result = run_phase0(
+                policy=ReferenceImageAnalysisPolicy(enabled=True),
+                project_root=project_root,
+                run_dir=run_dir,
+                extractor=GeminiPhase0Extractor(
+                    project_root=project_root,
+                    client=FakeClient(),
+                ),
+            )
+            output_document = json.loads(
+                (
+                    run_dir / result.style_gene_candidates_path
+                ).read_text(encoding="utf-8")
+            )
+            gene_pool_after_run = gene_pool_path.read_text(encoding="utf-8")
+            default_empty_document = build_style_gene_candidates_document()
+
+        self.assertIn(
+            "gemini experimental extractor",
+            output_document["aspects"]["rendering"][0]["notes"],
+        )
+        self.assertNotEqual(output_document, default_empty_document)
+        self.assertEqual(gene_pool_after_run, original_gene_pool)
+
+    def test_exp_001d_extractor_reports_source_image_on_api_failure(self):
+        class FailingClient:
+            model = "gemini-fake-model"
+
+            def analyze_image(self, image_path):
+                raise GeminiImageProbeError("Gemini API HTTP 500: boom")
+
+        extractor = GeminiPhase0Extractor(
+            project_root=Path("C:/project"),
+            client=FailingClient(),
+        )
+
+        with self.assertRaisesRegex(
+            GeminiImageProbeError,
+            "reference_images/ref-001.png.*HTTP 500",
+        ):
+            extractor(
+                (
+                    {
+                        "path": "reference_images/ref-001.png",
+                        "file_hash": "sha256:abc",
+                        "image_size": {"width": 2, "height": 3},
+                        "analysis_status": "pending",
+                    },
+                )
+            )
 
 
 if __name__ == "__main__":
