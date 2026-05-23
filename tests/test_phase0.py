@@ -23,6 +23,7 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     Phase0BatchStatus,
     StyleGeneCandidate,
     aggregate_phase0_batch_results,
+    build_phase0_batch_run_report,
     build_phase0_batch_candidates_document,
     build_style_gene_candidates_document,
     deterministic_mock_phase0_extractor,
@@ -31,6 +32,7 @@ from style_fit_profiler.phase0 import (  # noqa: E402
     plan_phase0_batches,
     run_phase0_batches,
     run_phase0,
+    select_failed_phase0_batches,
     validate_style_gene_candidate_aspects,
     validate_style_gene_candidates_document,
 )
@@ -861,6 +863,97 @@ class Phase0BatchAggregatorTests(unittest.TestCase):
                     ),
                 )
             )
+
+
+class Phase0BatchFailureIsolationTests(unittest.TestCase):
+    def test_exp_002d_failed_batch_does_not_block_partial_success_output(self):
+        batch_results = (
+            Phase0BatchResult(
+                batch_index=0,
+                input_paths=("reference_images/a.png",),
+                status=Phase0BatchStatus.COMPLETED,
+                candidates_by_aspect={
+                    "rendering": (
+                        StyleGeneCandidate(
+                            id="rendering_a",
+                            prompt="rendering trait a",
+                            confidence=0.5,
+                            source_images=("reference_images/a.png",),
+                            notes="batch 0",
+                        ),
+                    ),
+                    "color_light": (),
+                    "texture_artifacts": (),
+                },
+            ),
+            Phase0BatchResult(
+                batch_index=1,
+                input_paths=("reference_images/b.png",),
+                status=Phase0BatchStatus.FAILED,
+                error="provider unavailable",
+            ),
+        )
+
+        document = build_phase0_batch_candidates_document(batch_results=batch_results)
+        report = build_phase0_batch_run_report(batch_results=batch_results)
+
+        validate_style_gene_candidates_document(document)
+        self.assertEqual(
+            [candidate["id"] for candidate in document["aspects"]["rendering"]],
+            ["rendering_a"],
+        )
+        self.assertEqual(report["summary"]["completed_batches"], 1)
+        self.assertEqual(report["summary"]["failed_batches"], 1)
+        self.assertEqual(report["summary"]["retryable_batch_indexes"], [1])
+        self.assertEqual(
+            report["batches"][1],
+            {
+                "batch_index": 1,
+                "input_paths": ["reference_images/b.png"],
+                "status": "failed",
+                "error": "provider unavailable",
+                "output_paths": [],
+                "retryable": True,
+            },
+        )
+
+    def test_exp_002d_failed_batches_can_be_selected_for_retry(self):
+        batches = (
+            Phase0Batch(index=0, input_paths=("reference_images/a.png",), records=({"path": "reference_images/a.png"},)),
+            Phase0Batch(index=1, input_paths=("reference_images/b.png",), records=({"path": "reference_images/b.png"},)),
+            Phase0Batch(index=2, input_paths=("reference_images/c.png",), records=({"path": "reference_images/c.png"},)),
+        )
+        batch_results = (
+            Phase0BatchResult(
+                batch_index=0,
+                input_paths=("reference_images/a.png",),
+                status=Phase0BatchStatus.COMPLETED,
+                candidates_by_aspect={
+                    "rendering": (),
+                    "color_light": (),
+                    "texture_artifacts": (),
+                },
+            ),
+            Phase0BatchResult(
+                batch_index=1,
+                input_paths=("reference_images/b.png",),
+                status=Phase0BatchStatus.FAILED,
+                error="timeout",
+            ),
+            Phase0BatchResult(
+                batch_index=2,
+                input_paths=("reference_images/c.png",),
+                status=Phase0BatchStatus.FAILED,
+                error="quota",
+            ),
+        )
+
+        retry_batches = select_failed_phase0_batches(
+            batches=batches,
+            batch_results=batch_results,
+        )
+
+        self.assertEqual(retry_batches, (batches[1], batches[2]))
 
 
 class DeterministicMockExtractorTests(unittest.TestCase):

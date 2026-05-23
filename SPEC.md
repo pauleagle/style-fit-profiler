@@ -749,7 +749,8 @@ Candidate experimental atomic items：
   - 將多批結果合併成單一 Phase 0 candidate output。
   - 維持三面向 aspect contract。
 - `EXP-002D`: Batch failure isolation
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；failure isolation tests 覆蓋 partial-success candidate output、failed batch status report、retryable batch indexes 與 failed batch retry selection。
   - 確保單批失敗不會覆蓋其他 batch 的成功輸出。
   - 失敗 batch 必須能被追蹤與重試。
 - `EXP-002E`: Batch integration test coverage

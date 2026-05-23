@@ -273,6 +273,63 @@ def build_phase0_batch_candidates_document(
     return document
 
 
+def build_phase0_batch_run_report(
+    *,
+    batch_results: Sequence[Phase0BatchResult],
+) -> dict[str, Any]:
+    """Build EXP-002D retryable batch status metadata."""
+
+    batch_records = [
+        {
+            "batch_index": batch_result.batch_index,
+            "input_paths": list(batch_result.input_paths),
+            "status": batch_result.status.value,
+            "error": batch_result.error,
+            "output_paths": list(batch_result.output_paths),
+            "retryable": batch_result.status == Phase0BatchStatus.FAILED,
+        }
+        for batch_result in batch_results
+    ]
+    retryable_batch_indexes = [
+        batch_record["batch_index"]
+        for batch_record in batch_records
+        if batch_record["retryable"]
+    ]
+
+    return {
+        "version": STYLE_GENE_CANDIDATES_VERSION,
+        "source": BATCH_STYLE_GENE_CANDIDATES_SOURCE,
+        "summary": {
+            "total_batches": len(batch_records),
+            "completed_batches": sum(
+                1 for batch_record in batch_records if batch_record["status"] == Phase0BatchStatus.COMPLETED.value
+            ),
+            "failed_batches": len(retryable_batch_indexes),
+            "retryable_batch_indexes": retryable_batch_indexes,
+        },
+        "batches": batch_records,
+    }
+
+
+def select_failed_phase0_batches(
+    *,
+    batches: Sequence[Phase0Batch],
+    batch_results: Sequence[Phase0BatchResult],
+) -> tuple[Phase0Batch, ...]:
+    """Return original EXP-002D batches that can be retried."""
+
+    failed_batch_indexes = {
+        batch_result.batch_index
+        for batch_result in batch_results
+        if batch_result.status == Phase0BatchStatus.FAILED
+    }
+    return tuple(
+        batch
+        for batch in batches
+        if batch.index in failed_batch_indexes
+    )
+
+
 def _merge_style_gene_candidate_sources(
     first: StyleGeneCandidate,
     second: StyleGeneCandidate,
