@@ -879,25 +879,197 @@ Open questions：
 
 ### CR-001: Appeal Point and Art Style Extraction
 
-狀態：Backlog，限 Phase 0 baseline 完成並驗證後再評估。
+狀態：Backlog / Post-P0 Change Request，限 Phase 0 baseline 完成並驗證後再拆分實作。
+
+來源摘要：
+
+- `backlog/CR-001-01-gemini-update.md`：定義 Visual Style & Appeal Point Extractor、
+  10 個核心 loci、restricted allele pool、LLM JSON output、schema guardrail，
+  以及後續 GA / crossover 對接方向。
+- `backlog/CR-XXX-chatgpt-replenish.md`：補充 composition、mood、color harmony、
+  hair、eye、visual density、world setting 與 appeal archetype 等 Visual Genome
+  延伸 loci，並提出 style crossover、mutation、fitness scoring 與 latent
+  compression 的長期方向。
 
 Intent：
 
-- 擴充 reference image analysis，從既有圖片抽取 appeal points、visual charm factors、art style traits、impression colors 與 reusable visual genes。
-- 將 Phase 0 從單純候選風格基因抽取，延伸成後續 mutation、recombination 與 style-fit profiling 可使用的 style / profile seed generator。
+- 擴充 reference image analysis，從既有圖片抽取 expected art style、appeal points、
+  visual charm factors、character appearance traits、impression colors 與 reusable
+  visual genes。
+- 將 Phase 0 從單純候選風格基因抽取，延伸成可支援 mutation、recombination、
+  matrix evolution、recommendation、clustering 與 style-fit profiling 的 Visual
+  Genome / Visual DNA seed generator。
+- 同時保留兩層語意：
+  - Expected style genotype：可量化的底層美學風格基因，適合 crossover / mutation。
+  - Appeal phenotype：角色外型、服裝、情緒印象與商業吸睛點，適合後續 fitness
+    scoring 或 human review。
 
 Do not include in current P0：
 
 - 本 CR 不得修改目前 P0 atomic tasks。
-- 必須等 P0 baseline 完成、驗證通過後，才可拆分新的 implementation steps、schema 變更或 acceptance criteria。
+- 本 CR 不得改變 deterministic mock Phase 0 default。
+- 本 CR 不得讓 LLM / Gemini API 成為預設 unittest 或 baseline run dependency。
+- 本 CR 不得直接覆蓋 `style_gene_pool.json`。
+- 必須等 P0 baseline 完成、驗證通過後，才可拆分新的 implementation steps、
+  schema 變更、acceptance criteria 或 migration path。
 
-預期分析面向：
+Core output concept：
 
-- Style / Technique：art style traits、brushwork、linework、shading、rendering density。
-- Color / Mood：impression colors、palette、contrast、temperature、saturation。
-- Appearance / Character Design：facial features、hairstyle、outfit motifs、silhouette、accessories。
-- Appeal / Charm：appeal points、visual charm factors、emotional impression、memorability。
-- Reusable Genes：normalized visual traits、recombinable design tokens、stable identity anchors。
+- Vision LLM 應扮演 Visual Style & Appeal Point Encoder。
+- LLM 只能從規格允許的 allele registry 中選詞；不得自行創造 synonyms 或自由標籤。
+- 每個 locus 應選出 1 到 4 個 alleles，並為每個 allele 輸出 `0.0` 到 `1.0`
+  的 intensity。
+- 初版 output 應分成：
+  - `expected_style_genes`
+  - `character_appeal_genes`
+  - `cr001_summary`
+- `cr001_summary` 應為短摘要，用於 review UI 或人工審查，不可取代 structured genes。
+- 每份 output 必須能 trace back 到 source reference image。
+
+Expected JSON shape：
+
+```json
+{
+  "appeal_point_and_art_style": {
+    "expected_style_genes": {
+      "genre": { "selected": ["cel-shading"], "intensity": [0.9] },
+      "line_art": { "selected": ["clean-line-art"], "intensity": [0.8] },
+      "brush_shading": { "selected": ["smooth-airbrush"], "intensity": [0.8] },
+      "saturation": { "selected": ["vibrant-high-saturation"], "intensity": [0.7] },
+      "lighting": { "selected": ["bright-ambient"], "intensity": [0.8] },
+      "texture": { "selected": ["clean-digital-canvas"], "intensity": [0.9] }
+    },
+    "character_appeal_genes": {
+      "facial_features": { "selected": ["large-expressive-eyes"], "intensity": [0.9] },
+      "body_type": { "selected": ["slender-build"], "intensity": [0.8] },
+      "clothing_genre": { "selected": ["japanese-school-uniform"], "intensity": [0.9] },
+      "clothing_fit": { "selected": ["pleated-silhouette"], "intensity": [0.8] }
+    }
+  },
+  "cr001_summary": "short combined style and appeal summary"
+}
+```
+
+Canonical CR-001 loci registry：
+
+- `genre`：`cel-shading`、`anime-heavy-paint`、`semi-realistic-anime`、
+  `flat-illustration`、`2D-pop-art`、`vintage-manga`、`watercolor-anime`、
+  `oil-painterly`。
+- `line_art`：`clean-line-art`、`sketchy-lines`、`dynamic-linework`、
+  `thick-contours`、`lineless`、`colored-line-art`、`soft-pencil-sketch`。
+- `brush_shading`：`smooth-airbrush`、`hard-edge-shadow`、`textured-brush`、
+  `impasto-stroke`、`soft-gradient`、`cross-hatching`、`halftone-dot`。
+- `saturation`：`vibrant-high-saturation`、`pastel-tones`、`muted-low-saturation`、
+  `morandi-pallet`、`monochrome`、`neon-fluorescent`。
+- `lighting`：`bright-ambient`、`high-contrast-chiaroscuro`、`rim-lighting`、
+  `soft-volumetric-light`、`cinematic-backlight`、`overcast-diffused`。
+- `texture`：`clean-digital-canvas`、`grainy-paper`、`canvas-texture`、
+  `watercolor-bleed`、`vintage-film-grain`、`noise-artifacts`。
+- `facial_features`：`large-expressive-eyes`、`tsundere-eyes`、`soft-blush-cheeks`、
+  `sharp-jawline`、`prominent-eyelashes`、`detailed-hair-highlights`、`warm-smile`、
+  `neutral-stare`。
+- `body_type`：`slender-build`、`athletic-toned`、`hourglass-silhouette`、
+  `petite-proportion`、`stylized-chibi`、`realistic-anatomy`、`elongated-limbs`。
+- `clothing_genre`：`japanese-school-uniform`、`classic-sailor-fuku`、
+  `techwear-futuristic`、`gothic-lolita`、`modern-casualwear`、`fantasy-armor`、
+  `traditional-kimono`、`cyberpunk-gear`。
+- `clothing_fit`：`oversized-fit`、`tailored-slim-fit`、`pleated-silhouette`、
+  `high-waist-cut`、`asymmetric-layering`、`puff-sleeves`、`structural-drapery`。
+
+Canonical grouping：
+
+- Expected Art Style loci：`genre`、`line_art`、`brush_shading`、`saturation`、
+  `lighting`、`texture`。
+- Character Appeal loci：`facial_features`、`body_type`、`clothing_genre`、
+  `clothing_fit`。
+
+Candidate extended loci：
+
+- `composition`：`center-focused`、`rule-of-thirds`、`symmetrical-layout`、
+  `dynamic-diagonal`、`close-up-portrait`、`full-body-showcase`、
+  `cinematic-wide-shot`、`fisheye-perspective`、`low-angle-heroic`、
+  `top-down-view`、`crowded-detail-rich`、`minimal-negative-space`。
+- `mood_atmosphere`：`warm-cozy`、`melancholic`、`lonely-silent`、`dreamlike`、
+  `energetic-chaotic`、`romantic-soft`、`mysterious`、`nostalgic`、
+  `hopeful-bright`、`cold-detached`、`epic-grandiose`、`healing-gentle`。
+- `color_harmony`：`analogous-colors`、`complementary-contrast`、`triadic-palette`、
+  `split-complementary`、`warm-dominant`、`cool-dominant`、`high-value-contrast`、
+  `low-contrast-foggy`、`dual-tone`、`rainbow-spectrum`。
+- `hair_style`：`long-flowing`、`short-bob`、`twin-tail`、`ponytail`、
+  `messy-hair`、`ahoge`、`braided`、`curly-hair`、`straight-hair`、`wolf-cut`、
+  `hime-cut`。
+- `hair_rendering`：`sharp-anime-highlight`、`soft-gradient-hair`、
+  `chunky-hair-strands`、`individual-strand-detail`、`glossy-hair`、`matte-hair`。
+- `eye_rendering`：`sparkling-eyes`、`multi-layered-iris`、`flat-anime-eyes`、
+  `glassy-reflection`、`star-shaped-highlights`、`gradient-iris`、
+  `sharp-cat-eyes`、`droopy-eyes`、`heterochromia`。
+- `visual_density`：`minimal-clean`、`balanced-detail`、`hyper-detailed`、
+  `ornament-heavy`、`background-simplified`、`foreground-focused`、`texture-dense`。
+- `world_setting`：`post-apocalyptic`、`fantasy-medieval`、`urban-modern`、
+  `sci-fi-futuristic`、`idol-stage`、`military-tactical`、`magical-girl`、
+  `school-life`、`steampunk`、`traditional-eastern`。
+- `appeal_archetype`：`moe-cute`、`cool-beauty`、`mysterious`、`boyish-charm`、
+  `elegant-refined`、`pure-innocent`、`energetic-genki`、`tsundere`、`kuudere`、
+  `oneesan`、`villainous-allure`。
+
+Extended loci policy：
+
+- Canonical CR-001 初版應先支援 10 個核心 loci。
+- Candidate extended loci 可拆成後續 `CR-001A+` 或 experimental items；未正式納入前，
+  不得要求 baseline output 一定包含這些 keys。
+- 若某個 extended locus 被啟用，必須走與 canonical loci 相同的 registry validation、
+  intensity validation、traceability 與 no-custom-allele rules。
+
+Schema / validation expectations：
+
+- `selected` 必須是 list，且每個 value 必須存在於該 locus 的 allele registry。
+- `intensity` 必須是 list，長度必須等於 `selected`，每個值必須介於 `0.0` 到 `1.0`。
+- 每個 canonical locus 初版應選 1 到 4 個 alleles；若未來要允許空值，需先定義
+  explicit unknown / not-applicable policy。
+- Output 不可包含未知 top-level key、未知 locus key 或 registry 外的 allele。
+- Summary 不得取代 structured fields；structured fields 才是後續 recombination、
+  mutation、fitness scoring 與 audit 的來源。
+- Parser / mapper 必須能使用 fixture LLM response 測試，不呼叫真實 Gemini API。
+- API client / extractor 必須支援 dependency injection 與 fake transport。
+- API failure 必須回報清楚 error，且不得修改 `style_gene_pool.json`。
+
+Integration direction：
+
+- Multi-objective fitness：分開衡量 expected style consistency、appeal strength、
+  style uniqueness、genre purity 或其他後續定義的 fitness signals。
+- Decoupled crossover：允許風格 loci 與角色賣點 loci 分別 recombine，例如保留一組
+  watercolor style，同時交換另一組 clothing / silhouette genes。
+- Mutation engine：允許 saturation、line art、composition、mood 或其他 loci 依
+  mutation rate 漂移，但 mutation 只能引入 registry 中已知 alleles。
+- Style matrix evolution：支援把 A 的風格、B 的角色設計、C 的情緒或世界觀組合成
+  新 candidate seed。
+- Latent compression：長期可把 style vector、appeal vector、mood vector 與 palette
+  vector 壓縮成可 retrieval、clustering、interpolation 與 recommendation 的 profile seed。
+
+Validation requirements：
+
+- Registry tests 覆蓋 canonical 10 loci 與所有合法 alleles。
+- Parser tests 覆蓋 valid JSON、invalid JSON、missing required loci、unknown loci、
+  unknown allele、non-list `selected`、non-list `intensity`、長度不一致、非數字 intensity
+  與 out-of-range intensity。
+- Mapper tests 覆蓋 source image traceability、stable normalized gene IDs、duplicate
+  allele handling、summary preservation 與 no gene pool overwrite。
+- Extractor tests 使用 fake Gemini / fake vision client，確認 input 來自 reference
+  image manifest records，output 可通過 schema validation，API failure 不破壞既有檔案。
+- Manual integration probe 可作為非 CI 驗證；預設 unittest 不依賴 API key、network、
+  Gemini quota 或真實 image analysis backend。
+
+Open questions：
+
+- Canonical 10 loci 是否應一次納入第一個 CR-001 implementation，或拆成 style loci
+  與 appeal loci 兩個 atomic slices？
+- Extended loci 中哪些應升格為 CR-001 base schema，哪些應保留為 `CR-001A+`？
+- Allele registry 應硬編碼在 Python module、放在 JSON config，還是提供可版本化的
+  registry file？
+- `confidence`、`intensity` 與後續 `fitness_score` 的關係應如何定義？
+- CR-001 output 應寫成獨立 artifact，還是投影成 Phase 0 `style_gene_candidates.json`
+  的延伸格式？
+- Gemini broad traits 是否必須先經 human review，才可合併到 active gene pool？
 
 ## Testing Implications
 
