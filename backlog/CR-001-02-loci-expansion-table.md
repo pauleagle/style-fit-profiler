@@ -54,7 +54,7 @@
 | `vibrant-high-saturation` | 高彩度鮮豔風格 | Vibrant high-saturation palette |
 | `pastel-tones`            | 粉彩色調    | Pastel tones                    |
 | `muted-low-saturation`    | 低飽和柔和色調 | Muted low-saturation palette    |
-| `morandi-pallet`          | 莫蘭迪色系   | Morandi palette                 |
+| `morandi-palette`         | 莫蘭迪色系   | Morandi palette                 |
 | `monochrome`              | 單色調     | Monochrome                      |
 | `neon-fluorescent`        | 霓虹螢光色   | Neon fluorescent palette        |
 

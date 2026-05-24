@@ -1,0 +1,10 @@
+# Backlog Specs
+
+Backlog specs 是 post-baseline work 的 planning documents，可包含已完成的 experimental notes、proposed change requests、open questions 與 Devil's Advocate findings。
+
+| Item | Status | File |
+|---|---|---|
+| EXP-001: Gemini Image Analysis Extractor | Post-P0 experimental；opt-in helper work 已完成 | [EXP-001-gemini-image-analysis-extractor.md](EXP-001-gemini-image-analysis-extractor.md) |
+| EXP-002: Phase 0 Batch Reference Image Analysis | Post-P0 experimental；opt-in helper work 已完成 | [EXP-002-phase0-batch-reference-image-analysis.md](EXP-002-phase0-batch-reference-image-analysis.md) |
+| EXP-003: Colab Notebook Wrapper for Phase 0 | Post-P0 experimental；opt-in helper work 已完成 | [EXP-003-colab-notebook-wrapper-for-phase0.md](EXP-003-colab-notebook-wrapper-for-phase0.md) |
+| CR-001: Appeal Point and Art Style Extraction | Backlog / post-P0 change request；Devil's Advocate gate 目前 blocked | [CR-001-appeal-point-and-art-style-extraction.md](CR-001-appeal-point-and-art-style-extraction.md) |

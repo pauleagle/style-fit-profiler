@@ -20,7 +20,7 @@
    3. 筆觸與過渡 (Brushwork & Shading)
    * [smooth-airbrush, hard-edge-shadow, textured-brush, impasto-stroke, soft-gradient, cross-hatching, halftone-dot]
    4. 色彩飽和度 (Saturation Level)
-   * [vibrant-high-saturation, pastel-tones, muted-low-saturation, morandi-pallet, monochrome, neon-fluorescent]
+   * [vibrant-high-saturation, pastel-tones, muted-low-saturation, morandi-palette, monochrome, neon-fluorescent]
    5. 光影與環境 (Lighting & Tone)
    * [bright-ambient, high-contrast-chiaroscuro, rim-lighting, soft-volumetric-light, cinematic-backlight, overcast-diffused]
    6. 材質與肌理 (Texture Artifacts)
@@ -89,7 +89,7 @@ from typing import List, Dictfrom pydantic import BaseModel, field_validator
     "genre": {"cel-shading", "anime-heavy-paint", "semi-realistic-anime", "flat-illustration", "2D-pop-art", "vintage-manga", "watercolor-anime", "oil-painterly"},
     "line_art": {"clean-line-art", "sketchy-lines", "dynamic-linework", "thick-contours", "lineless", "colored-line-art", "soft-pencil-sketch"},
     "brush_shading": {"smooth-airbrush", "hard-edge-shadow", "textured-brush", "impasto-stroke", "soft-gradient", "cross-hatching", "halftone-dot"},
-    "saturation": {"vibrant-high-saturation", "pastel-tones", "muted-low-saturation", "morandi-pallet", "monochrome", "neon-fluorescent"},
+    "saturation": {"vibrant-high-saturation", "pastel-tones", "muted-low-saturation", "morandi-palette", "monochrome", "neon-fluorescent"},
     "lighting": {"bright-ambient", "high-contrast-chiaroscuro", "rim-lighting", "soft-volumetric-light", "cinematic-backlight", "overcast-diffused"},
     "texture": {"clean-digital-canvas", "grainy-paper", "canvas-texture", "watercolor-bleed", "vintage-film-grain", "noise-artifacts"},
     "facial_features": {"large-expressive-eyes", "tsundere-eyes", "soft-blush-cheeks", "sharp-jawline", "prominent-eyelashes", "detailed-hair-highlights", "warm-smile", "neutral-stare"},
@@ -168,7 +168,7 @@ class CR001Output(BaseModel):
 * vibrant-high-saturation: 高飽和度 / 鮮豔色彩
 * pastel-tones: 馬卡龍粉嫩調 / 柔和粉色系
 * muted-low-saturation: 低飽和度 / 暗淡柔和色調
-* morandi-pallet: 莫蘭迪色系 / 高級灰調
+* morandi-palette: 莫蘭迪色系 / 高級灰調
 * monochrome: 單色調 / 黑白灰
 * neon-fluorescent: 霓虹螢光色彩
 
