@@ -5,7 +5,7 @@
 - 目標版本：`v0.1.0`
 - 版本名稱：Optional reference-image bootstrap + interactive style exploration MVP
 - 規格狀態：Draft
-- 最後更新：2026-05-22
+- 最後更新：2026-05-24
 
 本文件是 `style-fit-profiler` 的實作與驗證契約。README 負責說明概念、
 用途與 roadmap；本 spec 負責定義目前版本目標中哪些行為必須被實作、測試
@@ -890,6 +890,12 @@ Open questions：
   hair、eye、visual density、world setting 與 appeal archetype 等 Visual Genome
   延伸 loci，並提出 style crossover、mutation、fitness scoring 與 latent
   compression 的長期方向。
+- `backlog/CR-001-02-loci-expansion-table.md`：整理核心 canonical loci 與 candidate
+  extended loci 的雙語 token table；本 spec 以精簡 token registry 形式彙總，不保留
+  完整表格版面。
+- `backlog/CR-001-03-impression-colors.md`：在 `color_harmony` 後補入結構化
+  `impression_colors`，用 `main`、`secondary`、`accent` 三個 hex color fields 表達
+  參考圖的印象色。
 
 Intent：
 
@@ -922,6 +928,7 @@ Core output concept：
 - 初版 output 應分成：
   - `expected_style_genes`
   - `character_appeal_genes`
+  - `impression_colors`
   - `cr001_summary`
 - `cr001_summary` 應為短摘要，用於 review UI 或人工審查，不可取代 structured genes。
 - 每份 output 必須能 trace back 到 source reference image。
@@ -944,6 +951,11 @@ Expected JSON shape：
       "body_type": { "selected": ["slender-build"], "intensity": [0.8] },
       "clothing_genre": { "selected": ["japanese-school-uniform"], "intensity": [0.9] },
       "clothing_fit": { "selected": ["pleated-silhouette"], "intensity": [0.8] }
+    },
+    "impression_colors": {
+      "main": "#88c8ff",
+      "secondary": "#f8b0d0",
+      "accent": "#fff2a8"
     }
   },
   "cr001_summary": "short combined style and appeal summary"
@@ -995,6 +1007,9 @@ Candidate extended loci：
 - `color_harmony`：`analogous-colors`、`complementary-contrast`、`triadic-palette`、
   `split-complementary`、`warm-dominant`、`cool-dominant`、`high-value-contrast`、
   `low-contrast-foggy`、`dual-tone`、`rainbow-spectrum`。
+- `impression_colors`：結構化印象色 palette，包含 `main`、`secondary`、`accent`
+  三個 hex color strings，格式為 `#RRGGBB`；此欄位描述整體主色、輔色與點綴色，
+  不使用 `selected` / `intensity` allele 形式。
 - `hair_style`：`long-flowing`、`short-bob`、`twin-tail`、`ponytail`、
   `messy-hair`、`ahoge`、`braided`、`curly-hair`、`straight-hair`、`wolf-cut`、
   `hime-cut`。
@@ -1019,6 +1034,8 @@ Extended loci policy：
   不得要求 baseline output 一定包含這些 keys。
 - 若某個 extended locus 被啟用，必須走與 canonical loci 相同的 registry validation、
   intensity validation、traceability 與 no-custom-allele rules。
+- `impression_colors` 是 palette auxiliary output，而非 allele locus；若啟用，必須驗證
+  三個 channel 皆存在且為 canonical hex color string。
 
 Schema / validation expectations：
 
@@ -1026,6 +1043,8 @@ Schema / validation expectations：
 - `intensity` 必須是 list，長度必須等於 `selected`，每個值必須介於 `0.0` 到 `1.0`。
 - 每個 canonical locus 初版應選 1 到 4 個 alleles；若未來要允許空值，需先定義
   explicit unknown / not-applicable policy。
+- `impression_colors` 若出現，必須只包含 `main`、`secondary`、`accent`，每個值必須是
+  `#RRGGBB` hex color string；不得使用自由文字 color names 取代。
 - Output 不可包含未知 top-level key、未知 locus key 或 registry 外的 allele。
 - Summary 不得取代 structured fields；structured fields 才是後續 recombination、
   mutation、fitness scoring 與 audit 的來源。
@@ -1052,6 +1071,8 @@ Validation requirements：
 - Parser tests 覆蓋 valid JSON、invalid JSON、missing required loci、unknown loci、
   unknown allele、non-list `selected`、non-list `intensity`、長度不一致、非數字 intensity
   與 out-of-range intensity。
+- Parser tests 覆蓋 `impression_colors` 的 missing channel、unknown channel、
+  invalid hex string 與 non-string value。
 - Mapper tests 覆蓋 source image traceability、stable normalized gene IDs、duplicate
   allele handling、summary preservation 與 no gene pool overwrite。
 - Extractor tests 使用 fake Gemini / fake vision client，確認 input 來自 reference
@@ -1069,6 +1090,7 @@ Open questions：
 - `confidence`、`intensity` 與後續 `fitness_score` 的關係應如何定義？
 - CR-001 output 應寫成獨立 artifact，還是投影成 Phase 0 `style_gene_candidates.json`
   的延伸格式？
+- `impression_colors` 應由 LLM 判定、影像 palette extraction，還是兩者交叉驗證產生？
 - Gemini broad traits 是否必須先經 human review，才可合併到 active gene pool？
 
 ## Testing Implications
