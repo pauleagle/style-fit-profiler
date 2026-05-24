@@ -46,15 +46,19 @@ Core output concept：
 - LLM 只能從規格允許的 allele registry 中選詞；不得自行創造 synonyms 或自由標籤。
 - 每個 locus 應選出 1 到 4 個 alleles，並為每個 allele 輸出 `0.0` 到 `1.0`
   的 intensity。
-- 初版 output 應分成：
-  - `expected_style_genes`
-  - `character_appeal_genes`
-  - `impression_colors`
-  - `cr001_summary`
+- CR-001 v1 schema 啟用順序：
+  - Base required：`expected_style_genes` 6 個 canonical style loci、
+    `character_appeal_genes` 4 個 canonical appeal loci，以及 top-level
+    `cr001_summary`。
+  - Base optional：`impression_colors`；它是 palette auxiliary output，不是 allele
+    locus，缺席時不得卡死 v1 baseline，但若存在就必須通過 palette schema 驗證。
+  - `CR-001A+` deferred：`composition`、`mood_atmosphere`、`color_harmony`、
+    `hair_style`、`eye_rendering`、`visual_density`、`world_setting`、
+    `appeal_archetype` 等 extended loci，暫不納入 v1 required schema。
 - `cr001_summary` 應為短摘要，用於 review UI 或人工審查，不可取代 structured genes。
 - 每份 output 必須能 trace back 到 source reference image。
 
-Expected JSON shape：
+Expected JSON shape（with optional `impression_colors` example）：
 
 ```json
 {
@@ -116,7 +120,7 @@ Canonical grouping：
 - Character Appeal loci：`facial_features`、`body_type`、`clothing_genre`、
   `clothing_fit`。
 
-Candidate extended loci：
+Candidate extended loci（`CR-001A+` deferred by default）：
 
 - `composition`：`center-focused`、`rule-of-thirds`、`symmetrical-layout`、
   `dynamic-diagonal`、`close-up-portrait`、`full-body-showcase`、
@@ -214,7 +218,7 @@ atomic item decomposition。
 
 | ID | Current status | Blocks CR-001 atomic decomposition | Blocks existing Phase 0 / EXP |
 |---|---|---|---|
-| `DA-CR-001-003` | `confirmed`，尚未 drill down / 定案 | Yes | No |
+| `DA-CR-001-003` | `resolved-by-spec-decision` | No | No |
 | `DA-CR-001-004` | `resolved-by-playbook-change` | No | No |
 | `DA-CR-001-005` | `resolved-by-spec-decision` | No | No |
 | `DA-CR-001-006` | `confirmed`，作為 pre-CR Phase 0 / EXP error-handling hardening prerequisite | Yes | No |
@@ -250,8 +254,18 @@ atomic item decomposition。
 - Suggestion：在拆 atomic item 前明確定義哪些欄位屬於 CR-001 base schema，哪些保留為
   `CR-001A+` 或 experimental items，以及 `impression_colors` 在初版中是 required
   或 optional。
-- Decision：尚未定案。
-- Status：`confirmed`。
+- Decision：已定案 CR-001 v1 schema 啟用順序。Base required 為
+  `expected_style_genes` 6 個 canonical style loci、`character_appeal_genes`
+  4 個 canonical appeal loci，以及 top-level `cr001_summary`。Base optional 為
+  `impression_colors`，採 optional but validated when present；缺席時不得卡死
+  baseline，存在時必須通過 palette auxiliary schema。`composition`、
+  `mood_atmosphere`、`color_harmony`、`hair_style`、`eye_rendering`、
+  `visual_density`、`world_setting`、`appeal_archetype` 等 extended loci 暫不進
+  v1 required schema，保留到 `CR-001A+` 或 experimental items。
+- Rationale：CR-001 目前已明確說 canonical 初版先支援 10 個核心 loci，
+  extended loci 拆到 `CR-001A+`，且 `impression_colors` 是 palette auxiliary
+  output，不是 allele locus。
+- Status：`resolved-by-spec-decision`。
 
 ## DA-CR-001-004: CR-001 currently has no accepted atomic decomposition
 
@@ -301,9 +315,6 @@ atomic item decomposition。
 
 Open questions：
 
-- Canonical 10 loci 是否應一次納入第一個 CR-001 implementation，或拆成 style loci
-  與 appeal loci 兩個 atomic slices？
-- Extended loci 中哪些應升格為 CR-001 base schema，哪些應保留為 `CR-001A+`？
 - Allele registry 應硬編碼在 Python module、放在 JSON config，還是提供可版本化的
   registry file？
 - `confidence`、`intensity` 與後續 `fitness_score` 的關係應如何定義？
