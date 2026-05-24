@@ -4,3 +4,13 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Local reference images are user data for manual Phase 0 probes.
+reference_images/*.[Bb][Mm][Pp]
+reference_images/*.[Gg][Ii][Ff]
+reference_images/*.[Jj][Pp][Gg]
+reference_images/*.[Jj][Pp][Ee][Gg]
+reference_images/*.[Pp][Nn][Gg]
+reference_images/*.[Tt][Ii][Ff]
+reference_images/*.[Tt][Ii][Ff][Ff]
+reference_images/*.[Ww][Ee][Bb][Pp]
