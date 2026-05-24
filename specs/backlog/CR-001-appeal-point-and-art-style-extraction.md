@@ -216,7 +216,7 @@ atomic item decomposition。
 |---|---|---|---|
 | `DA-CR-001-003` | `confirmed`，尚未 drill down / 定案 | Yes | No |
 | `DA-CR-001-004` | `resolved-by-playbook-change` | No | No |
-| `DA-CR-001-005` | `confirmed`，尚未 drill down / 定案 | Yes | No |
+| `DA-CR-001-005` | `resolved-by-spec-decision` | No | No |
 | `DA-CR-001-006` | `confirmed`，作為 pre-CR Phase 0 / EXP error-handling hardening prerequisite | Yes | No |
 
 ## DA-CR-001-001: Morandi palette token typo
@@ -276,8 +276,11 @@ atomic item decomposition。
 - Suggestion：第一個 CR-001 atomic item 前，先決定 CR-001 是否為獨立 primary artifact，
   或只是投影到 `style_gene_candidates.json`；若兩者都需要，應先保留 CR-001 原生
   artifact，再另拆 optional projection。
-- Decision：尚未定案。
-- Status：`confirmed`。
+- Decision：CR-001 應先保留多面向 raw / native artifact，而不是直接壓平成
+  `style_gene_candidates.json`。Expected style、character appearance、appeal traits、
+  impression colors 與 summary 都是後續演算法可讀的原始觀測面向；後續 GA / search
+  layer 可以固定幾個外型面向來收斂畫風，也可以固定畫風面向來探索角色變體。
+- Status：`resolved-by-spec-decision`。
 
 ## DA-CR-001-006: Phase 0 / EXP Gemini batch evidence does not prove CR-001 schema readiness
 
@@ -304,7 +307,7 @@ Open questions：
 - Allele registry 應硬編碼在 Python module、放在 JSON config，還是提供可版本化的
   registry file？
 - `confidence`、`intensity` 與後續 `fitness_score` 的關係應如何定義？
-- CR-001 output 應寫成獨立 artifact，還是投影成 Phase 0 `style_gene_candidates.json`
-  的延伸格式？
+- CR-001 raw artifact 的檔名、版本欄位、schema migration 與 optional Phase 0
+  projection path 應如何命名？
 - `impression_colors` 應由 LLM 判定、影像 palette extraction，還是兩者交叉驗證產生？
 - Gemini broad traits 是否必須先經 human review，才可合併到 active gene pool？
