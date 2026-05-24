@@ -48,9 +48,53 @@ Rules:
 - If a category has no clear traits, return an empty list for that category.
 """
 
+DEFAULT_BATCH_ANALYSIS_PROMPT = """Analyze each local reference image for a style-fit profiler.
+
+Return only JSON with this exact top-level shape:
+{
+  "images": [
+    {
+      "path": "reference_images/example.png",
+      "rendering": ["short reusable prompt gene", "..."],
+      "color_light": ["short reusable prompt gene", "..."],
+      "texture_artifacts": ["short reusable prompt gene", "..."],
+      "notes": "brief visual summary"
+    }
+  ]
+}
+
+Rules:
+- Return exactly one image record for each input path label.
+- Use the exact input path label in each image record.
+- Analyze each image independently; do not merge traits across images.
+- Focus on reusable visual style traits, not object identity.
+- Keep each gene short enough to reuse in an image generation prompt.
+- Do not invent artist names, copyrighted character names, or private identity claims.
+- If a category has no clear traits, return an empty list for that category.
+"""
+
 
 class GeminiImageProbeError(RuntimeError):
     """Raised when the Gemini image probe cannot complete."""
+
+
+@dataclass(frozen=True)
+class GeminiImageTraitAnalysis:
+    """Normalized Gemini trait analysis for one source image."""
+
+    source_image: str
+    traits_by_aspect: Mapping[str, tuple[str, ...]]
+    notes: str = ""
+
+    def to_json_record(self) -> dict[str, Any]:
+        return {
+            "path": self.source_image,
+            "traits": {
+                aspect: list(self.traits_by_aspect[aspect])
+                for aspect in GEMINI_TRAIT_ASPECTS
+            },
+            "notes": self.notes,
+        }
 
 
 def parse_gemini_trait_response(response_text: str) -> dict[str, tuple[str, ...]]:
@@ -86,6 +130,116 @@ def parse_gemini_trait_response(response_text: str) -> dict[str, tuple[str, ...]
         )
 
     return traits_by_aspect
+
+
+def parse_gemini_batch_trait_response(
+    response_text: str,
+    *,
+    expected_source_images: Sequence[str],
+) -> tuple[GeminiImageTraitAnalysis, ...]:
+    """Parse EXP batch Gemini JSON text into one analysis per source image."""
+
+    expected_sources = tuple(
+        _normalize_source_image_path(source_image)
+        for source_image in expected_source_images
+    )
+    if not expected_sources:
+        raise GeminiImageProbeError("Gemini batch response expected sources cannot be empty")
+
+    try:
+        response = json.loads(response_text)
+    except json.JSONDecodeError as error:
+        raise GeminiImageProbeError(f"invalid Gemini batch trait JSON: {error.msg}") from error
+
+    if not isinstance(response, Mapping):
+        raise GeminiImageProbeError("Gemini batch trait response must be a JSON object")
+
+    unknown_keys = sorted(set(response) - {"images"})
+    if unknown_keys:
+        raise GeminiImageProbeError(
+            f"Gemini batch trait response unknown key: {', '.join(unknown_keys)}"
+        )
+
+    images = response.get("images")
+    if isinstance(images, str) or not isinstance(images, list):
+        raise GeminiImageProbeError("Gemini batch trait response images must be a list")
+
+    expected_source_set = set(expected_sources)
+    seen_sources: set[str] = set()
+    analyses: list[GeminiImageTraitAnalysis] = []
+
+    for image_record in images:
+        analysis = _parse_gemini_batch_image_record(
+            image_record=image_record,
+            expected_source_set=expected_source_set,
+        )
+        if analysis.source_image in seen_sources:
+            raise GeminiImageProbeError(
+                f"Gemini batch trait response duplicate image: {analysis.source_image}"
+            )
+        seen_sources.add(analysis.source_image)
+        analyses.append(analysis)
+
+    missing_sources = [
+        source_image
+        for source_image in expected_sources
+        if source_image not in seen_sources
+    ]
+    if missing_sources:
+        raise GeminiImageProbeError(
+            f"Gemini batch trait response missing image: {', '.join(missing_sources)}"
+        )
+
+    return tuple(analyses)
+
+
+def _parse_gemini_batch_image_record(
+    *,
+    image_record: Any,
+    expected_source_set: set[str],
+) -> GeminiImageTraitAnalysis:
+    if not isinstance(image_record, Mapping):
+        raise GeminiImageProbeError("Gemini batch trait image record must be an object")
+
+    allowed_keys = {"path", *GEMINI_TRAIT_RESPONSE_KEYS}
+    unknown_keys = sorted(set(image_record) - allowed_keys)
+    if unknown_keys:
+        raise GeminiImageProbeError(
+            f"Gemini batch trait image record unknown key: {', '.join(unknown_keys)}"
+        )
+
+    source_image = _normalize_source_image_path(image_record.get("path"))
+    if source_image not in expected_source_set:
+        raise GeminiImageProbeError(
+            f"Gemini batch trait response unexpected image: {source_image}"
+        )
+
+    notes = image_record.get("notes", "")
+    if not isinstance(notes, str):
+        raise GeminiImageProbeError("Gemini batch trait response notes must be a string")
+
+    traits_by_aspect: dict[str, tuple[str, ...]] = {}
+    for aspect in GEMINI_TRAIT_ASPECTS:
+        if aspect not in image_record:
+            raise GeminiImageProbeError(
+                f"Gemini batch trait response missing aspect: {aspect}"
+            )
+
+        aspect_traits = image_record[aspect]
+        if isinstance(aspect_traits, str) or not isinstance(aspect_traits, list):
+            raise GeminiImageProbeError(
+                f"Gemini batch trait response aspect must be a list: {aspect}"
+            )
+        traits_by_aspect[aspect] = tuple(
+            _normalize_gemini_trait(trait=trait, aspect=aspect)
+            for trait in aspect_traits
+        )
+
+    return GeminiImageTraitAnalysis(
+        source_image=source_image,
+        traits_by_aspect=traits_by_aspect,
+        notes=notes,
+    )
 
 
 def map_gemini_traits_to_candidates(
@@ -240,6 +394,44 @@ def build_generate_content_payload(
     }
 
 
+def build_batch_generate_content_payload(
+    *,
+    image_paths: Sequence[Path],
+    source_images: Sequence[str],
+    prompt: str = DEFAULT_BATCH_ANALYSIS_PROMPT,
+) -> dict[str, Any]:
+    """Build a Gemini generateContent request payload for multiple local images."""
+
+    image_paths = tuple(image_paths)
+    source_images = tuple(
+        _normalize_source_image_path(source_image)
+        for source_image in source_images
+    )
+    if not image_paths:
+        raise GeminiImageProbeError("Gemini batch request requires at least one image")
+    if len(image_paths) != len(source_images):
+        raise GeminiImageProbeError("Gemini batch request image paths and labels differ")
+
+    image_list = "\n".join(
+        f"{index}. {source_image}"
+        for index, source_image in enumerate(source_images, start=1)
+    )
+    parts: list[dict[str, Any]] = [
+        {"text": f"{prompt}\n\nInput path labels:\n{image_list}"}
+    ]
+    for source_image, image_path in zip(source_images, image_paths):
+        parts.append({"text": f"Image path: {source_image}"})
+        parts.append(read_inline_image_part(image_path))
+
+    return {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "temperature": 0.2,
+        },
+    }
+
+
 def call_gemini_generate_content(
     *,
     api_key: str,
@@ -301,10 +493,23 @@ class GeminiImageAnalysisClient:
     prompt: str = DEFAULT_ANALYSIS_PROMPT
     timeout_seconds: int = 60
     payload_builder: Callable[..., Mapping[str, Any]] = build_generate_content_payload
+    batch_payload_builder: Callable[..., Mapping[str, Any]] = build_batch_generate_content_payload
     generate_content: Callable[..., Mapping[str, Any]] = call_gemini_generate_content
 
     def build_payload(self, image_path: Path) -> Mapping[str, Any]:
         return self.payload_builder(image_path=image_path, prompt=self.prompt)
+
+    def build_batch_payload(
+        self,
+        *,
+        image_paths: Sequence[Path],
+        source_images: Sequence[str],
+    ) -> Mapping[str, Any]:
+        return self.batch_payload_builder(
+            image_paths=image_paths,
+            source_images=source_images,
+            prompt=self.prompt,
+        )
 
     def generate_content_response(self, image_path: Path) -> Mapping[str, Any]:
         return self.generate_content(
@@ -314,8 +519,37 @@ class GeminiImageAnalysisClient:
             timeout_seconds=self.timeout_seconds,
         )
 
+    def generate_batch_content_response(
+        self,
+        *,
+        image_paths: Sequence[Path],
+        source_images: Sequence[str],
+    ) -> Mapping[str, Any]:
+        return self.generate_content(
+            api_key=self.api_key,
+            payload=self.build_batch_payload(
+                image_paths=image_paths,
+                source_images=source_images,
+            ),
+            model=self.model,
+            timeout_seconds=self.timeout_seconds,
+        )
+
     def analyze_image(self, image_path: Path) -> str:
         return extract_response_text(self.generate_content_response(image_path))
+
+    def analyze_images(
+        self,
+        *,
+        image_paths: Sequence[Path],
+        source_images: Sequence[str],
+    ) -> str:
+        return extract_response_text(
+            self.generate_batch_content_response(
+                image_paths=image_paths,
+                source_images=source_images,
+            )
+        )
 
 
 @dataclass(frozen=True)

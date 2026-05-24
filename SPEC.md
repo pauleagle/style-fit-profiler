@@ -645,9 +645,10 @@ Candidate experimental atomic items：
   - 文件化本機圖片測試指令、環境變數與安全注意事項。
 - `EXP-001F`: Manual Gemini batch command
   - 狀態：已完成。
-  - 完成依據：baseline tests 通過；batch command tests 覆蓋 CLI options、missing `GEMINI_API_KEY` guard、fake-client batch output path、partial failure report 與 non-zero exit code；README 已文件化 PowerShell 指令、輸出位置與安全注意事項。
+  - 完成依據：baseline tests 通過；batch command tests 覆蓋 CLI options、missing `GEMINI_API_KEY` guard、multi-image batch request、per-image analysis output path、partial failure report 與 non-zero exit code；README 已文件化 PowerShell 指令、輸出位置與安全注意事項。
   - 新增 `gemini_batch_probe.py` 作為手動批次驗證入口。
-  - 使用既有 `GeminiPhase0Extractor`、EXP-002 batch planner / runner / aggregator，輸出 `reference_image_manifest.json`、`style_gene_candidates.json` 與 `batch_run_report.json`。
+  - 每個 batch 以一次 multi-image Gemini request 送出多張 reference images，但回傳後必須逐圖記錄 analysis result，避免 Phase 0 提前整合跨圖 traits。
+  - 輸出 `reference_image_manifest.json`、逐圖 `reference_image_analysis.json`、相容投影 `style_gene_candidates.json` 與 `batch_run_report.json`。
 
 Open questions：
 
@@ -664,7 +665,7 @@ Open questions：
 Intent：
 
 - 在既有 Phase 0 reference image analysis 之上，提供 batch-oriented 的分析 wrapper，讓多張 reference images 可以依固定批次處理。
-- 將每一批 reference images 的分析結果彙整成同一份 `style_gene_candidates.json` 或同一組可合併的 batch fragments。
+- 將每一批 reference images 以一次 batch request 處理，但每張 image 的分析結果必須先分開保存；跨圖整合留到後續 phase 或人工審查。
 - 保留 deterministic mock baseline，避免 batch orchestration 影響單張分析可測性。
 
 背景：
@@ -681,6 +682,7 @@ Scope：
   - `rendering`
   - `color_light`
   - `texture_artifacts`
+- 新增 per-image analysis artifact，讓每張 reference image 的 traits、notes、batch index 與 status 可獨立追蹤。
 - 新增 batch failure isolation，避免單一 batch 失敗破壞其他 batch 的可用輸出。
 - 新增 batch-level traceability，讓每個 candidate gene 都能 trace back 到至少一個 batch 與一張 source image。
 - 支援 deterministic mock batch analysis，供 tests 與 early CLI 使用。
@@ -709,10 +711,18 @@ Output contract：
   - batch status
   - batch-level error（若失敗）
   - batch output paths
+- Manual Gemini batch flow 必須輸出 `phase0/reference_image_analysis.json`，其中每張 image 各自保留：
+  - reference image path
+  - batch index
+  - analysis status
+  - model
+  - per-aspect traits
+  - notes 或 error
 - Aggregated output 必須維持 Phase 0 candidate schema：
   - `version`
   - `source`
   - `aspects`
+- 在 Gemini batch flow 中，`style_gene_candidates.json` 只是 Phase 0 candidate schema 的相容投影，不代表已完成跨圖整合。
 - `source` 應能辨識為 batch analysis flow，而不是單張 probe flow。
 - 每個 candidate gene 的 `source_images` 必須保留原始 reference image relative path。
 - 若同一 trait 由多個 batch 提出，aggregator 必須能保留去重或合併後的穩定 ID 規則。

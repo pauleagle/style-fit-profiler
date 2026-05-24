@@ -19,7 +19,7 @@ from style_fit_profiler.gemini_batch_probe import (  # noqa: E402
     parse_args,
 )
 from style_fit_profiler.gemini_image_probe import (  # noqa: E402
-    DEFAULT_ANALYSIS_PROMPT,
+    DEFAULT_BATCH_ANALYSIS_PROMPT,
     GeminiImageProbeError,
 )
 
@@ -85,16 +85,27 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
                 calls.append(("init", api_key, model, prompt, timeout_seconds))
                 self.model = model
 
-            def analyze_image(self, image_path):
-                calls.append(("analyze_image", image_path.name))
-                return f"""
-                {{
-                  "rendering": ["clean linework {image_path.stem}"],
-                  "color_light": ["soft warm light {image_path.stem}"],
-                  "texture_artifacts": [],
-                  "notes": "fixture response"
-                }}
-                """
+            def analyze_images(self, *, image_paths, source_images):
+                calls.append(
+                    (
+                        "analyze_images",
+                        tuple(image_path.name for image_path in image_paths),
+                        tuple(source_images),
+                    )
+                )
+                image_records = []
+                for source_image in source_images:
+                    stem = Path(source_image).stem
+                    image_records.append(
+                        {
+                            "path": source_image,
+                            "rendering": [f"clean linework {stem}"],
+                            "color_light": [f"soft warm light {stem}"],
+                            "texture_artifacts": [],
+                            "notes": f"fixture response {stem}",
+                        }
+                    )
+                return json.dumps({"images": image_records})
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir)
@@ -116,7 +127,7 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
                         "--run-dir",
                         str(run_dir),
                         "--batch-size",
-                        "1",
+                        "2",
                         "--model",
                         "gemini-test-model",
                     ]
@@ -133,6 +144,11 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
                     encoding="utf-8"
                 )
             )
+            image_analysis = json.loads(
+                (run_dir / "phase0" / "reference_image_analysis.json").read_text(
+                    encoding="utf-8"
+                )
+            )
             report = json.loads(
                 (run_dir / "phase0" / "batch_run_report.json").read_text(
                     encoding="utf-8"
@@ -143,9 +159,12 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
         self.assertEqual(
             calls,
             [
-                ("init", "test-api-key", "gemini-test-model", DEFAULT_ANALYSIS_PROMPT, 60),
-                ("analyze_image", "a.png"),
-                ("analyze_image", "b.png"),
+                ("init", "test-api-key", "gemini-test-model", DEFAULT_BATCH_ANALYSIS_PROMPT, 60),
+                (
+                    "analyze_images",
+                    ("a.png", "b.png"),
+                    ("reference_images/a.png", "reference_images/b.png"),
+                ),
             ],
         )
         self.assertEqual(
@@ -153,31 +172,63 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
             ["reference_images/a.png", "reference_images/b.png"],
         )
         self.assertEqual(candidates["source"], "phase0_batch_reference_image_analysis")
-        self.assertEqual(report["summary"]["total_batches"], 2)
-        self.assertEqual(report["summary"]["completed_batches"], 2)
+        self.assertEqual(
+            [
+                candidate["source_images"]
+                for candidate in candidates["aspects"]["rendering"]
+            ],
+            [["reference_images/a.png"], ["reference_images/b.png"]],
+        )
+        self.assertEqual(
+            [record["path"] for record in image_analysis["images"]],
+            ["reference_images/a.png", "reference_images/b.png"],
+        )
+        self.assertEqual(
+            [record["analysis_status"] for record in image_analysis["images"]],
+            ["completed", "completed"],
+        )
+        self.assertEqual(
+            image_analysis["images"][0]["traits"]["rendering"],
+            ["clean linework a"],
+        )
+        self.assertEqual(report["summary"]["total_batches"], 1)
+        self.assertEqual(report["summary"]["completed_batches"], 1)
         self.assertEqual(report["summary"]["failed_batches"], 0)
+        self.assertEqual(
+            report["batches"][0]["output_paths"],
+            ["phase0/reference_image_analysis.json"],
+        )
+        self.assertEqual(
+            stdout_record["reference_image_analysis_path"],
+            "phase0/reference_image_analysis.json",
+        )
         self.assertEqual(
             stdout_record["style_gene_candidates_path"],
             "phase0/style_gene_candidates.json",
         )
-        self.assertEqual(stdout_record["summary"]["total_batches"], 2)
+        self.assertEqual(stdout_record["summary"]["total_batches"], 1)
 
     def test_batch_command_writes_partial_outputs_and_returns_failure_for_failed_batch(self):
         class FakeClient:
             def __init__(self, *, api_key, model, prompt, timeout_seconds):
                 self.model = model
 
-            def analyze_image(self, image_path):
-                if image_path.name == "b.png":
+            def analyze_images(self, *, image_paths, source_images):
+                if image_paths[0].name == "b.png":
                     raise GeminiImageProbeError("Gemini API HTTP 500: boom")
-                return """
-                {
-                  "rendering": ["clean linework"],
-                  "color_light": [],
-                  "texture_artifacts": [],
-                  "notes": "fixture response"
-                }
-                """
+                return json.dumps(
+                    {
+                        "images": [
+                            {
+                                "path": source_images[0],
+                                "rendering": ["clean linework"],
+                                "color_light": [],
+                                "texture_artifacts": [],
+                                "notes": "fixture response",
+                            }
+                        ]
+                    }
+                )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir)
@@ -208,6 +259,11 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
                     encoding="utf-8"
                 )
             )
+            image_analysis = json.loads(
+                (run_dir / "phase0" / "reference_image_analysis.json").read_text(
+                    encoding="utf-8"
+                )
+            )
             report = json.loads(
                 (run_dir / "phase0" / "batch_run_report.json").read_text(
                     encoding="utf-8"
@@ -220,11 +276,18 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
         self.assertEqual(report["summary"]["retryable_batch_indexes"], [1])
         self.assertEqual(report["batches"][1]["status"], "failed")
         self.assertIn("b.png", report["batches"][1]["error"])
+        self.assertEqual(
+            [record["analysis_status"] for record in image_analysis["images"]],
+            ["completed", "failed"],
+        )
+        self.assertEqual(image_analysis["images"][1]["path"], "reference_images/b.png")
+        self.assertIn("HTTP 500", image_analysis["images"][1]["error"])
         self.assertEqual(len(candidates["aspects"]["rendering"]), 1)
 
     def test_batch_probe_result_reports_failed_batches(self):
         result = GeminiBatchProbeResult(
             reference_image_manifest_path="phase0/reference_image_manifest.json",
+            reference_image_analysis_path="phase0/reference_image_analysis.json",
             style_gene_candidates_path="phase0/style_gene_candidates.json",
             batch_run_report_path="phase0/batch_run_report.json",
             summary={"failed_batches": 1},

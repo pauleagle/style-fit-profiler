@@ -95,7 +95,9 @@ python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --p
 #### Manual Gemini Batch Probe
 
 EXP-001 / EXP-002 也提供一個手動批次 Gemini 入口，供本機將 `reference_images/`
-中的多張圖片依固定 batch size 送入 Gemini extractor，並輸出 Phase 0 artifacts。
+中的多張圖片依固定 batch size 送入 Gemini。每個 batch 會以一次 multi-image
+Gemini request 送出，回傳後仍以逐圖 analysis record 保存；跨圖整合保留到後續
+phase 或人工審查時處理。
 此入口仍是 opt-in manual probe，不是預設 backend，也不納入 CI。
 
 PowerShell 範例：
@@ -115,17 +117,24 @@ python -m style_fit_profiler.gemini_batch_probe --prompt-file prompts/phase0-gem
 python -m style_fit_profiler.gemini_batch_probe --timeout-seconds 90
 ```
 
+Batch `--prompt-file` 必須要求 Gemini 回傳 top-level `images` 陣列，且每筆 image
+record 使用原始 input path，否則 CLI 會視為 provider response schema error。
+
 輸出位置：
 
 ```text
 runs/manual-gemini-batch/
 └─ phase0/
    ├─ reference_image_manifest.json
+   ├─ reference_image_analysis.json
    ├─ style_gene_candidates.json
    └─ batch_run_report.json
 ```
 
-若部分 batch 失敗，CLI 仍會寫出可用的 partial `style_gene_candidates.json` 與
+`reference_image_analysis.json` 是逐圖分析紀錄；`style_gene_candidates.json`
+是保留既有 Phase 0 candidate schema 的相容投影，方便 preview / validator 使用，
+不是最終整合結果。若部分 batch 失敗，CLI 仍會寫出可用的 partial
+`reference_image_analysis.json`、`style_gene_candidates.json` 與
 `batch_run_report.json`，並以非零 exit code 結束，方便人工檢查與重試。
 
 安全注意事項：

@@ -11,13 +11,20 @@ import sys
 from typing import Any, Mapping
 
 from .gemini_image_probe import (
-    DEFAULT_ANALYSIS_PROMPT,
+    DEFAULT_BATCH_ANALYSIS_PROMPT,
     DEFAULT_MODEL,
+    GEMINI_TRAIT_ASPECTS,
     GeminiImageAnalysisClient,
+    GeminiImageTraitAnalysis,
     GeminiImageProbeError,
-    GeminiPhase0Extractor,
+    map_gemini_traits_to_candidates,
+    parse_gemini_batch_trait_response,
 )
 from .phase0 import (
+    Phase0Batch,
+    Phase0BatchResult,
+    Phase0BatchStatus,
+    StyleGeneCandidate,
     build_phase0_batch_candidates_document,
     build_phase0_batch_run_report,
     build_reference_image_manifest_records,
@@ -31,6 +38,7 @@ from .phase0 import (
 
 DEFAULT_BATCH_RUN_DIR = Path("runs/manual-gemini-batch")
 DEFAULT_BATCH_SIZE = 2
+REFERENCE_IMAGE_ANALYSIS_OUTPUT = Path("phase0/reference_image_analysis.json")
 STYLE_GENE_CANDIDATES_OUTPUT = Path("phase0/style_gene_candidates.json")
 BATCH_RUN_REPORT_OUTPUT = Path("phase0/batch_run_report.json")
 
@@ -40,6 +48,7 @@ class GeminiBatchProbeResult:
     """File outputs and status summary from a manual Gemini batch probe."""
 
     reference_image_manifest_path: str
+    reference_image_analysis_path: str
     style_gene_candidates_path: str
     batch_run_report_path: str
     summary: Mapping[str, Any]
@@ -51,6 +60,7 @@ class GeminiBatchProbeResult:
     def to_json_record(self) -> dict[str, Any]:
         return {
             "reference_image_manifest_path": self.reference_image_manifest_path,
+            "reference_image_analysis_path": self.reference_image_analysis_path,
             "style_gene_candidates_path": self.style_gene_candidates_path,
             "batch_run_report_path": self.batch_run_report_path,
             "summary": dict(self.summary),
@@ -81,19 +91,36 @@ def run_gemini_batch_probe(
         reference_image_manifest_records=reference_image_manifest_records,
     )
 
-    extractor = GeminiPhase0Extractor(
-        project_root=project_root,
-        client=client,
-        model=model,
-    )
     batches = plan_phase0_batches(
         reference_image_manifest_records=reference_image_manifest_records,
         batch_size=batch_size,
     )
+    image_analyses_by_batch: dict[int, tuple[GeminiImageTraitAnalysis, ...]] = {}
     batch_results = run_phase0_batches(
         batches=batches,
-        analyzer=lambda batch: extractor(batch.records),
+        analyzer=lambda batch: _analyze_gemini_batch(
+            batch=batch,
+            project_root=project_root,
+            client=client,
+            model=model,
+            image_analyses_by_batch=image_analyses_by_batch,
+        ),
     )
+    reference_image_analysis_document = _build_reference_image_analysis_document(
+        batch_results=batch_results,
+        image_analyses_by_batch=image_analyses_by_batch,
+        model=model,
+    )
+    reference_image_analysis_path = _write_run_relative_json(
+        run_dir=run_dir,
+        relative_path=REFERENCE_IMAGE_ANALYSIS_OUTPUT,
+        document=reference_image_analysis_document,
+    )
+    batch_results_with_outputs = _attach_output_path_to_batch_results(
+        batch_results=batch_results,
+        output_path=reference_image_analysis_path,
+    )
+
     style_gene_candidates_document = build_phase0_batch_candidates_document(
         batch_results=batch_results,
     )
@@ -104,7 +131,9 @@ def run_gemini_batch_probe(
         document=style_gene_candidates_document,
     )
 
-    batch_run_report = build_phase0_batch_run_report(batch_results=batch_results)
+    batch_run_report = build_phase0_batch_run_report(
+        batch_results=batch_results_with_outputs
+    )
     batch_run_report_path = _write_run_relative_json(
         run_dir=run_dir,
         relative_path=BATCH_RUN_REPORT_OUTPUT,
@@ -113,6 +142,7 @@ def run_gemini_batch_probe(
 
     return GeminiBatchProbeResult(
         reference_image_manifest_path=reference_image_manifest_path,
+        reference_image_analysis_path=reference_image_analysis_path,
         style_gene_candidates_path=style_gene_candidates_path,
         batch_run_report_path=batch_run_report_path,
         summary=batch_run_report["summary"],
@@ -158,7 +188,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--prompt-file",
         type=Path,
-        help="Optional UTF-8 prompt file. Defaults to the Phase 0 probe prompt.",
+        help="Optional UTF-8 batch prompt file. Defaults to the Phase 0 batch probe prompt.",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -183,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     prompt = (
         args.prompt_file.read_text(encoding="utf-8")
         if args.prompt_file is not None
-        else DEFAULT_ANALYSIS_PROMPT
+        else DEFAULT_BATCH_ANALYSIS_PROMPT
     )
     client = GeminiImageAnalysisClient(
         api_key=api_key,
@@ -217,6 +247,138 @@ def _write_run_relative_json(
         encoding="utf-8",
     )
     return output_path.relative_to(run_dir).as_posix()
+
+
+def _analyze_gemini_batch(
+    *,
+    batch: Phase0Batch,
+    project_root: Path,
+    client: Any,
+    model: str,
+    image_analyses_by_batch: dict[int, tuple[GeminiImageTraitAnalysis, ...]],
+) -> dict[str, tuple[StyleGeneCandidate, ...]]:
+    source_images = batch.input_paths
+    image_paths = tuple(project_root / source_image for source_image in source_images)
+    try:
+        response_text = client.analyze_images(
+            image_paths=image_paths,
+            source_images=source_images,
+        )
+        image_analyses = parse_gemini_batch_trait_response(
+            response_text,
+            expected_source_images=source_images,
+        )
+    except GeminiImageProbeError as error:
+        source_list = ", ".join(source_images)
+        raise GeminiImageProbeError(
+            f"Gemini batch image analysis failed for batch {batch.index} "
+            f"({source_list}): {error}"
+        ) from error
+
+    image_analyses_by_batch[batch.index] = image_analyses
+    return _map_gemini_image_analyses_to_candidates(
+        image_analyses=image_analyses,
+        model=model,
+    )
+
+
+def _map_gemini_image_analyses_to_candidates(
+    *,
+    image_analyses: tuple[GeminiImageTraitAnalysis, ...],
+    model: str,
+) -> dict[str, tuple[StyleGeneCandidate, ...]]:
+    candidates_by_aspect: dict[str, list[StyleGeneCandidate]] = {
+        aspect: [] for aspect in GEMINI_TRAIT_ASPECTS
+    }
+    seen_candidate_ids: set[str] = set()
+
+    for image_analysis in image_analyses:
+        image_candidates_by_aspect = map_gemini_traits_to_candidates(
+            traits_by_aspect=image_analysis.traits_by_aspect,
+            source_image=image_analysis.source_image,
+            model=model,
+        )
+        for aspect in GEMINI_TRAIT_ASPECTS:
+            for candidate in image_candidates_by_aspect[aspect]:
+                if candidate.id in seen_candidate_ids:
+                    continue
+                seen_candidate_ids.add(candidate.id)
+                candidates_by_aspect[aspect].append(candidate)
+
+    return {
+        aspect: tuple(candidates)
+        for aspect, candidates in candidates_by_aspect.items()
+    }
+
+
+def _build_reference_image_analysis_document(
+    *,
+    batch_results: tuple[Phase0BatchResult, ...],
+    image_analyses_by_batch: Mapping[int, tuple[GeminiImageTraitAnalysis, ...]],
+    model: str,
+) -> dict[str, Any]:
+    image_records: list[dict[str, Any]] = []
+
+    for batch_result in batch_results:
+        if batch_result.status == Phase0BatchStatus.COMPLETED:
+            image_analyses = image_analyses_by_batch.get(batch_result.batch_index)
+            if image_analyses is None:
+                raise GeminiImageProbeError(
+                    "Gemini batch image analysis missing completed batch records: "
+                    f"{batch_result.batch_index}"
+                )
+            for image_analysis in image_analyses:
+                image_records.append(
+                    {
+                        "path": image_analysis.source_image,
+                        "batch_index": batch_result.batch_index,
+                        "analysis_status": Phase0BatchStatus.COMPLETED.value,
+                        "model": model,
+                        "traits": {
+                            aspect: list(image_analysis.traits_by_aspect[aspect])
+                            for aspect in GEMINI_TRAIT_ASPECTS
+                        },
+                        "notes": image_analysis.notes,
+                    }
+                )
+            continue
+
+        for source_image in batch_result.input_paths:
+            image_records.append(
+                {
+                    "path": source_image,
+                    "batch_index": batch_result.batch_index,
+                    "analysis_status": Phase0BatchStatus.FAILED.value,
+                    "model": model,
+                    "traits": {aspect: [] for aspect in GEMINI_TRAIT_ASPECTS},
+                    "notes": "",
+                    "error": batch_result.error,
+                }
+            )
+
+    return {
+        "version": "0.1.0",
+        "source": "phase0_batch_reference_image_analysis",
+        "images": image_records,
+    }
+
+
+def _attach_output_path_to_batch_results(
+    *,
+    batch_results: tuple[Phase0BatchResult, ...],
+    output_path: str,
+) -> tuple[Phase0BatchResult, ...]:
+    return tuple(
+        Phase0BatchResult(
+            batch_index=batch_result.batch_index,
+            input_paths=batch_result.input_paths,
+            status=batch_result.status,
+            candidates_by_aspect=batch_result.candidates_by_aspect,
+            error=batch_result.error,
+            output_paths=(*batch_result.output_paths, output_path),
+        )
+        for batch_result in batch_results
+    )
 
 
 if __name__ == "__main__":
