@@ -14,6 +14,8 @@
 - `post-P0`：目前 Phase 0 baseline 之後的 planning scope。
 - `experimental`：opt-in 或探索性行為，不得改變 baseline defaults。
 - `blocked`：需要 drill-down resolution 或 human decision，才可進入 atomic decomposition。
+- `ready-for-atomic-decomposition`：blocking DA gate 已收斂，可開始拆 atomic items；
+  仍不等同於 accepted implementation scope。
 - `deferred`：future work，不阻擋目前 baseline。
 
 ## Index
