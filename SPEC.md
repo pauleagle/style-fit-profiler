@@ -767,7 +767,7 @@ Open questions：
 
 ### EXP-003: Colab Notebook Wrapper for Phase 0
 
-狀態：Post-P0 Experimental Spec，尚未實作為正式 notebook wrapper。
+狀態：Post-P0 Experimental Spec，experimental notebook wrapper helpers 已完成；仍為 opt-in，尚未成為正式 production entrypoint。
 前置條件：Phase 0 baseline 已完成並驗證；至少一個可重現的本機 Phase 0 flow 已跑通。
 
 Intent：
@@ -839,16 +839,20 @@ Candidate experimental atomic items：
   - 完成依據：baseline tests 通過；notebook bootstrap tests 覆蓋 Colab runtime setup cell、dependency check cell、ipynb-serializable bootstrap document 與 no hardcoded secret values。
   - 建立 Colab runtime setup 與依賴初始化 cell。
 - `EXP-003B`: Upload and staging helper
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；upload/staging tests 覆蓋 Colab upload bytes staging、manifest generation、unsupported upload rejection、duplicate staged name rejection 與 no hardcoded secret values。
   - 處理 reference image upload、暫存與 manifest generation。
 - `EXP-003C`: Notebook analysis runner
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；analysis runner tests 覆蓋 config loading、single Phase 0 flow、batch wrapper flow、mock analyzer output 與 notebook analysis cell generation。
   - 在 notebook 中呼叫 Phase 0 analysis flow，支援 mock backend 與 batch wrapper。
 - `EXP-003D`: Preview and export cells
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；preview/export tests 覆蓋 candidate preview rows、invalid candidate schema rejection、preview 不修改正式輸出、export manifest、download zip 與 Colab preview/export cells。
   - 顯示候選 genes、輸出 manifest，並提供下載路徑。
 - `EXP-003E`: Notebook smoke tests
-  - 狀態：planned。
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；smoke tests 覆蓋 package-level notebook helper exports、完整 Colab notebook document serialization，以及 upload → batch analysis → preview → export 的 deterministic mock flow。
   - 驗證 wrapper 不破壞核心 Phase 0 contract。
 
 Open questions：
