@@ -328,6 +328,51 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 - Status：`verified-by-implementation-and-focused-mutation`（pre-CR Phase 0 / EXP
   error-handling prerequisite 已滿足；不阻擋既有 Phase 0 / EXP）。
 
+## Atomic decomposition preparation draft
+
+Status：`draft`；pending human review / DA review before accepted implementation scope。
+workflow_step：`Step 4.5 - Atomic Decomposition Draft`；若本 draft 被接受，下一步是
+`Step 5 - Spec-Based Test Design`。
+
+Decomposition constraints：
+
+- v1 required scope 只包含 10 個 canonical loci 與 `cr001_summary`。
+- `impression_colors` 是 optional palette auxiliary output，present 時驗證，
+  不放入 allele registry。
+- `CR-001A+` extended loci 不進 v1 baseline required schema。
+- CR-001 native artifact 先於 optional projection；不得直接壓平成
+  `style_gene_candidates.json`。
+- Parser / mapper 必須以 fixture 或 fake client 測試；baseline unittest 不呼叫
+  真 Gemini API。
+- 所有 downstream 行為必須遵守 `raw -> valid raw -> downstream` gate。
+
+Draft atomic items：
+
+| ID | Draft slice | Main output | Validation focus |
+|---|---|---|---|
+| `CR-001-00` | Acceptance scaffold | CR-001 v1 fixture set and test namespace | SDD/TDD anchor, no implementation behavior yet |
+| `CR-001-01` | Canonical allele registry | `CR001_ALLELE_REGISTRY` for 10 loci | no unknown locus, no custom allele, `impression_colors` excluded |
+| `CR-001-02` | Gene payload schema validator | validator for `selected` / `intensity` loci | required loci, 1-4 selected alleles, matched intensity length, intensity range |
+| `CR-001-03` | Palette auxiliary validator | optional `impression_colors` validator | exact `main` / `secondary` / `accent`, `#RRGGBB`, optional but validated |
+| `CR-001-04` | Raw response parser | raw JSON -> valid CR-001 record | malformed JSON, unknown key, schema mismatch, source traceability |
+| `CR-001-05` | Native artifact builder/writer | CR-001 native artifact under `phase0/` | version/source fields, source image linkage, summary preservation |
+| `CR-001-06` | Gemini prompt / fake-client adapter | CR-001 prompt and opt-in Gemini adapter | restricted allele prompt, fixture response, no API dependency in tests |
+| `CR-001-07` | Batch integration | partial success/failure CR-001 batch report | valid raw isolation, failed scope, retry metadata, output paths |
+| `CR-001-08` | Optional projection | projection from CR-001 native artifact to Phase 0 candidates | explicitly non-primary, no gene pool overwrite |
+
+Decision candidates before accepting `CR-001-00`：
+
+- Registry owner：start with a Python module constant for v1; defer external JSON registry
+  until schema migration/versioning is needed.
+- `confidence` / `intensity` / `fitness_score`：v1 owns `intensity` only；`confidence`
+  belongs to extraction reliability if introduced later，`fitness_score` stays outside
+  CR-001 parsing.
+- Native artifact candidate path：`phase0/cr001_reference_image_analysis.json`。
+- `impression_colors` producer：v1 accepts LLM-provided optional palette only；image
+  palette extraction / cross-check can be split to `CR-001A+` or EXP.
+- Gene pool merge：CR-001 native output may inform review, but merge to active
+  `style_gene_pool.json` must remain a separate human-reviewed step.
+
 Open questions：
 
 - Allele registry 應硬編碼在 Python module、放在 JSON config，還是提供可版本化的
