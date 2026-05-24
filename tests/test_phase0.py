@@ -764,6 +764,28 @@ class Phase0BatchRunnerTests(unittest.TestCase):
         self.assertEqual(results[0].max_attempts, 2)
         self.assertEqual(results[0].remaining_attempts, 0)
 
+    def test_exp_002b_runner_reports_remaining_attempt_budget_after_early_success(self):
+        batch = Phase0Batch(
+            index=0,
+            input_paths=("reference_images/a.png",),
+            records=({"path": "reference_images/a.png"},),
+        )
+
+        results = run_phase0_batches(
+            batches=(batch,),
+            analyzer=lambda received_batch: {
+                "rendering": (),
+                "color_light": (),
+                "texture_artifacts": (),
+            },
+            max_attempts=3,
+        )
+
+        self.assertEqual(results[0].status, Phase0BatchStatus.COMPLETED)
+        self.assertEqual(results[0].attempt_count, 1)
+        self.assertEqual(results[0].max_attempts, 3)
+        self.assertEqual(results[0].remaining_attempts, 2)
+
 
 class Phase0BatchAggregatorTests(unittest.TestCase):
     def test_exp_002c_aggregator_merges_completed_batches_by_aspect(self):
