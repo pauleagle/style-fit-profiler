@@ -211,8 +211,8 @@ Validation requirements：
 
 Devil's Advocate drill-down register：
 
-目前 gate status：`blocked`。必須先處置所有 `confirmed` 項目，才可進入 CR-001
-atomic item decomposition。
+目前 gate status：`ready-for-atomic-decomposition`。所有 blocking DA 項目已完成
+decision / implementation verification，可進入 CR-001 atomic item decomposition。
 
 目前 gate 判讀：
 
@@ -221,7 +221,7 @@ atomic item decomposition。
 | `DA-CR-001-003` | `resolved-by-spec-decision` | No | No |
 | `DA-CR-001-004` | `resolved-by-playbook-change` | No | No |
 | `DA-CR-001-005` | `resolved-by-spec-decision` | No | No |
-| `DA-CR-001-006` | `resolved-by-spec-decision`，implementation pending | Yes | No |
+| `DA-CR-001-006` | `verified-by-implementation-and-focused-mutation` | No | No |
 
 ## DA-CR-001-001: Morandi palette token typo
 
@@ -321,8 +321,12 @@ atomic item decomposition。
   provider 限制的 magic numbers（例如 batch size、timeout seconds、inline image
   byte limit、backoff interval、attempt budget）也應由具名 config / policy owner
   管理；若必須保留為常數，需有明確名稱、註解理由與測試覆蓋。
-- Status：`resolved-by-spec-decision`；implementation pending（pre-CR Phase 0 / EXP
-  error-handling prerequisite；不阻擋既有 Phase 0 / EXP）。
+- Implementation evidence：`7972bf2` 已加入 Phase 0 / Gemini raw validation gate；
+  `bae6f50` 已補 focused mutation coverage。驗證包含 full unittest、
+  diff hygiene，以及 two scoped manual mutants：remaining retry budget 與 final
+  invalid raw non-retryable status。
+- Status：`verified-by-implementation-and-focused-mutation`（pre-CR Phase 0 / EXP
+  error-handling prerequisite 已滿足；不阻擋既有 Phase 0 / EXP）。
 
 Open questions：
 
