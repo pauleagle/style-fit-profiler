@@ -92,10 +92,46 @@ python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --r
 python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --prompt-file prompts/phase0-gemini.txt
 ```
 
+#### Manual Gemini Batch Probe
+
+EXP-001 / EXP-002 也提供一個手動批次 Gemini 入口，供本機將 `reference_images/`
+中的多張圖片依固定 batch size 送入 Gemini extractor，並輸出 Phase 0 artifacts。
+此入口仍是 opt-in manual probe，不是預設 backend，也不納入 CI。
+
+PowerShell 範例：
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:GEMINI_API_KEY = "<your key>"
+python -m style_fit_profiler.gemini_batch_probe --input-dir reference_images --batch-size 2
+```
+
+可選參數：
+
+```powershell
+python -m style_fit_profiler.gemini_batch_probe --run-dir runs/manual-gemini-batch
+python -m style_fit_profiler.gemini_batch_probe --model gemini-2.5-flash
+python -m style_fit_profiler.gemini_batch_probe --prompt-file prompts/phase0-gemini.txt
+python -m style_fit_profiler.gemini_batch_probe --timeout-seconds 90
+```
+
+輸出位置：
+
+```text
+runs/manual-gemini-batch/
+└─ phase0/
+   ├─ reference_image_manifest.json
+   ├─ style_gene_candidates.json
+   └─ batch_run_report.json
+```
+
+若部分 batch 失敗，CLI 仍會寫出可用的 partial `style_gene_candidates.json` 與
+`batch_run_report.json`，並以非零 exit code 結束，方便人工檢查與重試。
+
 安全注意事項：
 
 - `GEMINI_API_KEY` 只放在環境變數，不寫入 repo、README、SPEC、config 或 commit。
-- 本命令會把圖片內容送到 Gemini API；不要用未準備送出本機的私人或敏感圖片。
+- Gemini probe / batch probe 會把圖片內容送到 Gemini API；不要用未準備送出本機的私人或敏感圖片。
 - Prompt 明確要求不要產生 artist names、copyrighted character names 或 private identity claims；輸出仍需人工審查。
 - 若圖片超過 inline request size，先停止並改走後續 File API flow；不要在此手動 probe 中硬塞大檔。
 

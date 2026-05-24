@@ -643,6 +643,11 @@ Candidate experimental atomic items：
   - 完成依據：baseline tests 通過；manual command tests 覆蓋 CLI options、missing `GEMINI_API_KEY` guard 與 fake-client raw output path；README 已文件化 PowerShell 指令、環境變數與安全注意事項。
   - 保留或整理 `gemini_image_probe.py` 作為手動驗證入口。
   - 文件化本機圖片測試指令、環境變數與安全注意事項。
+- `EXP-001F`: Manual Gemini batch command
+  - 狀態：已完成。
+  - 完成依據：baseline tests 通過；batch command tests 覆蓋 CLI options、missing `GEMINI_API_KEY` guard、fake-client batch output path、partial failure report 與 non-zero exit code；README 已文件化 PowerShell 指令、輸出位置與安全注意事項。
+  - 新增 `gemini_batch_probe.py` 作為手動批次驗證入口。
+  - 使用既有 `GeminiPhase0Extractor`、EXP-002 batch planner / runner / aggregator，輸出 `reference_image_manifest.json`、`style_gene_candidates.json` 與 `batch_run_report.json`。
 
 Open questions：
 
