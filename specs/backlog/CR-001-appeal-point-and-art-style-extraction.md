@@ -330,9 +330,27 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 
 ## Atomic decomposition preparation draft
 
-Status：`draft`；pending human review / DA review before accepted implementation scope。
-workflow_step：`Step 4.5 - Atomic Decomposition Draft`；若本 draft 被接受，下一步是
-`Step 5 - Spec-Based Test Design`。
+Status：`da-reviewed`；current draft is directionally valid but not yet accepted
+implementation scope.
+workflow_step：`Step 4.5 - Atomic Decomposition Review`；下一步仍是修成
+accepted atomic decomposition table，才可進入 `Step 5 - Spec-Based Test Design`。
+
+Current DA conclusion：
+
+- 不應直接照現有 `CR-001-00` 到 `CR-001-08` 開始實作；目前清單方向正確，
+  但部分 item 邊界會讓 validator、parser、prompt、adapter、artifact writer 與 batch
+  integration 混入同一個 diff。
+- `CR-001-02` 與 `CR-001-04` 有責任重疊。Gene payload validator 應只驗
+  in-memory CR-001 record；raw response parser 應只處理 raw JSON parse、呼叫
+  validator、產生 valid / invalid result。
+- `CR-001-06` 太大。Gemini prompt contract 與 fake-client adapter / extractor
+  應拆開，避免 prompt 測試、runtime transport seam 與 API dependency 混在一起。
+- 缺少 single-image CR-001 extraction pipeline。應先有單張 reference image 的
+  `raw -> valid raw -> native record` orchestration，再做 batch integration。
+- `CR-001-05` 在開始前必須收斂 artifact path、schema version 與 source linkage
+  欄位；若決策面過多，builder 與 writer 應再拆。
+- `CR-001-08` 應維持 deferred / non-primary；optional projection 不屬於 v1
+  baseline completion，不得和 native artifact 混成同一個 item。
 
 Decomposition constraints：
 
@@ -346,21 +364,24 @@ Decomposition constraints：
   真 Gemini API。
 - 所有 downstream 行為必須遵守 `raw -> valid raw -> downstream` gate。
 
-Draft atomic items：
+Recommended revised atomic items：
 
-| ID | Draft slice | Main output | Validation focus |
+| ID | Recommended slice | Main output | Validation focus |
 |---|---|---|---|
 | `CR-001-00` | Acceptance scaffold | CR-001 v1 fixture set and test namespace | SDD/TDD anchor, no implementation behavior yet |
 | `CR-001-01` | Canonical allele registry | `CR001_ALLELE_REGISTRY` for 10 loci | no unknown locus, no custom allele, `impression_colors` excluded |
-| `CR-001-02` | Gene payload schema validator | validator for `selected` / `intensity` loci | required loci, 1-4 selected alleles, matched intensity length, intensity range |
+| `CR-001-02` | In-memory CR-001 schema validator | validator for required record shape and `selected` / `intensity` loci | required loci, 1-4 selected alleles, matched intensity length, intensity range, summary presence |
 | `CR-001-03` | Palette auxiliary validator | optional `impression_colors` validator | exact `main` / `secondary` / `accent`, `#RRGGBB`, optional but validated |
-| `CR-001-04` | Raw response parser | raw JSON -> valid CR-001 record | malformed JSON, unknown key, schema mismatch, source traceability |
-| `CR-001-05` | Native artifact builder/writer | CR-001 native artifact under `phase0/` | version/source fields, source image linkage, summary preservation |
-| `CR-001-06` | Gemini prompt / fake-client adapter | CR-001 prompt and opt-in Gemini adapter | restricted allele prompt, fixture response, no API dependency in tests |
-| `CR-001-07` | Batch integration | partial success/failure CR-001 batch report | valid raw isolation, failed scope, retry metadata, output paths |
-| `CR-001-08` | Optional projection | projection from CR-001 native artifact to Phase 0 candidates | explicitly non-primary, no gene pool overwrite |
+| `CR-001-04` | Raw response parser / valid-raw gate | raw JSON -> validation result and valid CR-001 record | malformed JSON, unknown key, schema mismatch, source traceability; no file write |
+| `CR-001-05A` | Native artifact document builder | CR-001 native artifact document shape | schema version, source image linkage, summary preservation, no Phase 0 projection |
+| `CR-001-05B` | Native artifact writer | write CR-001 native artifact under `phase0/` | stable output path, deterministic JSON, no overwrite of `style_gene_pool.json` |
+| `CR-001-06A` | Gemini prompt contract | CR-001 restricted-allele prompt and fixture response | prompt references canonical registry and rejects free-form allele drift |
+| `CR-001-06B` | Opt-in fake-client adapter / extractor | injectable CR-001 vision client seam | fake transport in tests, no API dependency in baseline unittest |
+| `CR-001-07A` | Single-image CR-001 extraction orchestration | manifest record -> raw -> valid raw -> native record | valid raw isolation, source traceability, no batch complexity |
+| `CR-001-07B` | Batch integration | partial success/failure CR-001 batch report | failed scope, retry metadata, configured attempt budget, output paths |
+| `CR-001-08` | Optional projection | projection from CR-001 native artifact to Phase 0 candidates | deferred / non-primary, no gene pool overwrite |
 
-Decision candidates before accepting `CR-001-00`：
+Decision candidates already suitable for the revised table：
 
 - Registry owner：start with a Python module constant for v1; defer external JSON registry
   until schema migration/versioning is needed.
@@ -373,12 +394,12 @@ Decision candidates before accepting `CR-001-00`：
 - Gene pool merge：CR-001 native output may inform review, but merge to active
   `style_gene_pool.json` must remain a separate human-reviewed step.
 
-Open questions：
+Open questions before accepting revised atomic decomposition：
 
-- Allele registry 應硬編碼在 Python module、放在 JSON config，還是提供可版本化的
-  registry file？
-- `confidence`、`intensity` 與後續 `fitness_score` 的關係應如何定義？
-- CR-001 raw artifact 的檔名、版本欄位、schema migration 與 optional Phase 0
-  projection path 應如何命名？
+- `impression_colors` hex 是否必須 canonical uppercase `#RRGGBB`，或接受 lowercase
+  後 normalize？
+- Native artifact schema version 欄位命名是否接受 `schema_version: "cr001.v1"`？
+- `CR-001-05A` / `CR-001-05B` 是否固定拆成 builder 與 writer，或允許在決策收斂後
+  合併成單一 item？
 - `impression_colors` 應由 LLM 判定、影像 palette extraction，還是兩者交叉驗證產生？
 - Gemini broad traits 是否必須先經 human review，才可合併到 active gene pool？
