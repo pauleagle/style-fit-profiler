@@ -635,6 +635,10 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
                 "gemini-test-model",
                 "--prompt-file",
                 "prompt.txt",
+                "--timeout-seconds",
+                "7",
+                "--raw-output",
+                "runs/raw.json",
                 "--raw",
             ]
         )
@@ -642,6 +646,8 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
         self.assertEqual(args.image_path, Path("reference_images/ref-001.png"))
         self.assertEqual(args.model, "gemini-test-model")
         self.assertEqual(args.prompt_file, Path("prompt.txt"))
+        self.assertEqual(args.timeout_seconds, 7)
+        self.assertEqual(args.raw_output, Path("runs/raw.json"))
         self.assertTrue(args.raw)
 
     def test_exp_001e_manual_command_requires_env_api_key_before_api_call(self):
@@ -653,8 +659,8 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
         calls = []
 
         class FakeClient:
-            def __init__(self, *, api_key, model, prompt):
-                calls.append(("init", api_key, model, prompt))
+            def __init__(self, *, api_key, model, prompt, timeout_seconds):
+                calls.append(("init", api_key, model, prompt, timeout_seconds))
 
             def generate_content_response(self, image_path):
                 calls.append(("generate_content_response", image_path))
@@ -687,10 +693,54 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
         self.assertEqual(
             calls,
             [
-                ("init", "test-api-key", "gemini-2.5-flash", DEFAULT_ANALYSIS_PROMPT),
+                ("init", "test-api-key", "gemini-2.5-flash", DEFAULT_ANALYSIS_PROMPT, 60),
                 ("generate_content_response", Path("reference_images/ref-001.png")),
             ],
         )
+
+    def test_exp_001e_manual_command_can_save_raw_response_before_extracting_text(self):
+        class FakeClient:
+            def __init__(self, *, api_key, model, prompt, timeout_seconds):
+                pass
+
+            def generate_content_response(self, image_path):
+                return {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": (
+                                            '{"rendering":[],"color_light":[],'
+                                            '"texture_artifacts":[],"notes":""}'
+                                        )
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            raw_output = Path(temp_dir) / "runs" / "raw-response.json"
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}, clear=True),
+                patch("style_fit_profiler.gemini_image_probe.GeminiImageAnalysisClient", FakeClient),
+                redirect_stdout(io.StringIO()) as stdout,
+            ):
+                result = main(
+                    [
+                        "reference_images/ref-001.png",
+                        "--raw-output",
+                        str(raw_output),
+                    ]
+                )
+
+            raw_record = json.loads(raw_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        self.assertIn('"rendering"', stdout.getvalue())
+        self.assertIn("candidates", raw_record)
 
 
 if __name__ == "__main__":

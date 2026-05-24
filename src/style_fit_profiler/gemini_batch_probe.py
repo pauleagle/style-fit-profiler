@@ -13,6 +13,7 @@ from typing import Any, Mapping
 from .gemini_image_probe import (
     DEFAULT_BATCH_ANALYSIS_PROMPT,
     DEFAULT_MODEL,
+    DEFAULT_TIMEOUT_SECONDS,
     GEMINI_TRAIT_ASPECTS,
     GeminiImageAnalysisClient,
     GeminiImageTraitAnalysis,
@@ -21,6 +22,7 @@ from .gemini_image_probe import (
     parse_gemini_batch_trait_response,
 )
 from .phase0 import (
+    DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS,
     Phase0Batch,
     Phase0BatchResult,
     Phase0BatchStatus,
@@ -38,6 +40,7 @@ from .phase0 import (
 
 DEFAULT_BATCH_RUN_DIR = Path("runs/manual-gemini-batch")
 DEFAULT_BATCH_SIZE = 2
+DEFAULT_BATCH_MAX_ATTEMPTS = DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS
 REFERENCE_IMAGE_ANALYSIS_OUTPUT = Path("phase0/reference_image_analysis.json")
 STYLE_GENE_CANDIDATES_OUTPUT = Path("phase0/style_gene_candidates.json")
 BATCH_RUN_REPORT_OUTPUT = Path("phase0/batch_run_report.json")
@@ -73,6 +76,7 @@ def run_gemini_batch_probe(
     input_dir: str,
     run_dir: Path,
     batch_size: int,
+    max_attempts: int,
     client: Any,
     model: str,
 ) -> GeminiBatchProbeResult:
@@ -96,19 +100,31 @@ def run_gemini_batch_probe(
         batch_size=batch_size,
     )
     image_analyses_by_batch: dict[int, tuple[GeminiImageTraitAnalysis, ...]] = {}
-    batch_results = run_phase0_batches(
-        batches=batches,
-        analyzer=lambda batch: _analyze_gemini_batch(
+    raw_responses_by_batch: dict[int, list[dict[str, Any]]] = {}
+    attempt_indexes_by_batch: dict[int, int] = {}
+
+    def analyze_batch(batch: Phase0Batch) -> dict[str, tuple[StyleGeneCandidate, ...]]:
+        attempt_index = attempt_indexes_by_batch.get(batch.index, 0) + 1
+        attempt_indexes_by_batch[batch.index] = attempt_index
+        return _analyze_gemini_batch(
             batch=batch,
+            attempt_index=attempt_index,
             project_root=project_root,
             client=client,
             model=model,
             image_analyses_by_batch=image_analyses_by_batch,
-        ),
+            raw_responses_by_batch=raw_responses_by_batch,
+        )
+
+    batch_results = run_phase0_batches(
+        batches=batches,
+        max_attempts=max_attempts,
+        analyzer=analyze_batch,
     )
     reference_image_analysis_document = _build_reference_image_analysis_document(
         batch_results=batch_results,
         image_analyses_by_batch=image_analyses_by_batch,
+        raw_responses_by_batch=raw_responses_by_batch,
         model=model,
     )
     reference_image_analysis_path = _write_run_relative_json(
@@ -184,6 +200,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_BATCH_SIZE,
         help="Number of manifest records per batch.",
     )
+    parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=DEFAULT_BATCH_MAX_ATTEMPTS,
+        help="Maximum attempts per Gemini batch before it is reported as failed.",
+    )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Gemini model name.")
     parser.add_argument(
         "--prompt-file",
@@ -193,7 +215,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--timeout-seconds",
         type=int,
-        default=60,
+        default=DEFAULT_TIMEOUT_SECONDS,
         help="Timeout for each Gemini generateContent request.",
     )
     return parser.parse_args(argv)
@@ -226,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         input_dir=args.input_dir,
         run_dir=run_dir,
         batch_size=args.batch_size,
+        max_attempts=args.max_attempts,
         client=client,
         model=args.model,
     )
@@ -252,10 +275,12 @@ def _write_run_relative_json(
 def _analyze_gemini_batch(
     *,
     batch: Phase0Batch,
+    attempt_index: int,
     project_root: Path,
     client: Any,
     model: str,
     image_analyses_by_batch: dict[int, tuple[GeminiImageTraitAnalysis, ...]],
+    raw_responses_by_batch: dict[int, list[dict[str, Any]]],
 ) -> dict[str, tuple[StyleGeneCandidate, ...]]:
     source_images = batch.input_paths
     image_paths = tuple(project_root / source_image for source_image in source_images)
@@ -264,11 +289,26 @@ def _analyze_gemini_batch(
             image_paths=image_paths,
             source_images=source_images,
         )
+    except GeminiImageProbeError as error:
+        source_list = ", ".join(source_images)
+        raise GeminiImageProbeError(
+            f"Gemini batch image analysis failed for batch {batch.index} "
+            f"({source_list}): {error}"
+        ) from error
+
+    raw_response_record: dict[str, Any] = {
+        "attempt_index": attempt_index,
+        "response_text": response_text,
+        "error": None,
+    }
+    raw_responses_by_batch.setdefault(batch.index, []).append(raw_response_record)
+    try:
         image_analyses = parse_gemini_batch_trait_response(
             response_text,
             expected_source_images=source_images,
         )
     except GeminiImageProbeError as error:
+        raw_response_record["error"] = str(error)
         source_list = ", ".join(source_images)
         raise GeminiImageProbeError(
             f"Gemini batch image analysis failed for batch {batch.index} "
@@ -315,12 +355,26 @@ def _build_reference_image_analysis_document(
     *,
     batch_results: tuple[Phase0BatchResult, ...],
     image_analyses_by_batch: Mapping[int, tuple[GeminiImageTraitAnalysis, ...]],
+    raw_responses_by_batch: Mapping[int, list[dict[str, Any]]],
     model: str,
 ) -> dict[str, Any]:
     image_records: list[dict[str, Any]] = []
+    raw_response_records: list[dict[str, Any]] = []
 
     for batch_result in batch_results:
+        raw_responses = tuple(raw_responses_by_batch.get(batch_result.batch_index, ()))
+        raw_response_records.extend(
+            _build_raw_response_records(
+                batch_result=batch_result,
+                raw_responses=raw_responses,
+            )
+        )
         if batch_result.status == Phase0BatchStatus.COMPLETED:
+            if not raw_responses:
+                raise GeminiImageProbeError(
+                    "Gemini batch image analysis missing raw response: "
+                    f"{batch_result.batch_index}"
+                )
             image_analyses = image_analyses_by_batch.get(batch_result.batch_index)
             if image_analyses is None:
                 raise GeminiImageProbeError(
@@ -360,7 +414,43 @@ def _build_reference_image_analysis_document(
         "version": "0.1.0",
         "source": "phase0_batch_reference_image_analysis",
         "images": image_records,
+        "raw_responses": raw_response_records,
     }
+
+
+def _build_raw_response_records(
+    *,
+    batch_result: Phase0BatchResult,
+    raw_responses: tuple[Mapping[str, Any], ...],
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for response_index, raw_response in enumerate(raw_responses):
+        attempt_index = raw_response["attempt_index"]
+        response_text = raw_response["response_text"]
+        final_response = response_index == len(raw_responses) - 1
+        valid_response = (
+            batch_result.status == Phase0BatchStatus.COMPLETED
+            and final_response
+        )
+        raw_error = raw_response.get("error")
+        records.append(
+            {
+                "batch_index": batch_result.batch_index,
+                "input_paths": list(batch_result.input_paths),
+                "attempt_index": attempt_index,
+                "raw_status": "completed",
+                "validation_status": (
+                    "valid"
+                    if valid_response
+                    else "invalid_retryable"
+                    if attempt_index < batch_result.max_attempts
+                    else "invalid_non_retryable"
+                ),
+                "response_text": response_text,
+                "error": None if valid_response else raw_error or batch_result.error,
+            }
+        )
+    return records
 
 
 def _attach_output_path_to_batch_results(
@@ -376,6 +466,9 @@ def _attach_output_path_to_batch_results(
             candidates_by_aspect=batch_result.candidates_by_aspect,
             error=batch_result.error,
             output_paths=(*batch_result.output_paths, output_path),
+            attempt_count=batch_result.attempt_count,
+            max_attempts=batch_result.max_attempts,
+            remaining_attempts=batch_result.remaining_attempts,
         )
         for batch_result in batch_results
     )

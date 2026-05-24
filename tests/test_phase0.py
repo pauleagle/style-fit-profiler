@@ -601,6 +601,22 @@ class Phase0BatchPlannerTests(unittest.TestCase):
                 ordering="random",
             )
 
+    def test_exp_002b_rejects_invalid_max_attempts(self):
+        batch = Phase0Batch(
+            index=0,
+            input_paths=("reference_images/a.png",),
+            records=({"path": "reference_images/a.png"},),
+        )
+
+        for invalid_max_attempts in (0, -1, True, "2"):
+            with self.subTest(invalid_max_attempts=invalid_max_attempts):
+                with self.assertRaisesRegex(Phase0Error, "max attempts"):
+                    run_phase0_batches(
+                        batches=(batch,),
+                        analyzer=lambda received_batch: {},
+                        max_attempts=invalid_max_attempts,
+                    )
+
 
 class Phase0BatchRunnerTests(unittest.TestCase):
     def test_exp_002b_runner_records_completed_batch_status(self):
@@ -717,6 +733,36 @@ class Phase0BatchRunnerTests(unittest.TestCase):
                 ("reference_images/c.png",),
             ],
         )
+
+    def test_exp_002b_runner_retries_until_configured_attempt_budget(self):
+        batch = Phase0Batch(
+            index=0,
+            input_paths=("reference_images/a.png",),
+            records=({"path": "reference_images/a.png"},),
+        )
+        calls = []
+
+        def analyzer(received_batch):
+            calls.append(received_batch.index)
+            if len(calls) == 1:
+                raise Phase0Error("temporary provider failure")
+            return {
+                "rendering": (),
+                "color_light": (),
+                "texture_artifacts": (),
+            }
+
+        results = run_phase0_batches(
+            batches=(batch,),
+            analyzer=analyzer,
+            max_attempts=2,
+        )
+
+        self.assertEqual(calls, [0, 0])
+        self.assertEqual(results[0].status, Phase0BatchStatus.COMPLETED)
+        self.assertEqual(results[0].attempt_count, 2)
+        self.assertEqual(results[0].max_attempts, 2)
+        self.assertEqual(results[0].remaining_attempts, 0)
 
 
 class Phase0BatchAggregatorTests(unittest.TestCase):
@@ -914,6 +960,11 @@ class Phase0BatchFailureIsolationTests(unittest.TestCase):
                 "error": "provider unavailable",
                 "output_paths": [],
                 "retryable": True,
+                "attempt_count": 1,
+                "max_attempts": 1,
+                "remaining_attempts": 0,
+                "retry_exhausted": True,
+                "next_retry_scope": "same_batch",
             },
         )
 

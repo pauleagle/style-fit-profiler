@@ -29,6 +29,7 @@ STYLE_GENE_CANDIDATES_VERSION = "0.1.0"
 STYLE_GENE_CANDIDATES_SOURCE = "phase0_reference_image_analysis"
 BATCH_STYLE_GENE_CANDIDATES_SOURCE = "phase0_batch_reference_image_analysis"
 STYLE_GENE_CANDIDATE_ASPECTS = ALLOWED_REFERENCE_IMAGE_ASPECTS
+DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS = 1
 STYLE_GENE_CANDIDATE_FIELDS = (
     "id",
     "prompt",
@@ -118,6 +119,9 @@ class Phase0BatchResult:
     candidates_by_aspect: dict[str, tuple[StyleGeneCandidate, ...]] | None = None
     error: str | None = None
     output_paths: tuple[str, ...] = ()
+    attempt_count: int = DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS
+    max_attempts: int = DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS
+    remaining_attempts: int = 0
 
 
 class Phase0Extractor(Protocol):
@@ -180,35 +184,49 @@ def run_phase0_batches(
     *,
     batches: Sequence[Phase0Batch],
     analyzer: Phase0BatchAnalyzer,
+    max_attempts: int = DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS,
 ) -> tuple[Phase0BatchResult, ...]:
     """Run EXP-002B batch analysis while preserving per-batch status."""
 
+    if type(max_attempts) is not int or max_attempts < 1:
+        raise Phase0Error("Phase 0 batch max attempts must be a positive integer")
+
     results: list[Phase0BatchResult] = []
     for batch in batches:
-        try:
-            candidates_by_aspect = {
-                aspect: tuple(candidates)
-                for aspect, candidates in analyzer(batch).items()
-            }
-        except Exception as error:
+        for attempt_index in range(1, max_attempts + 1):
+            try:
+                candidates_by_aspect = {
+                    aspect: tuple(candidates)
+                    for aspect, candidates in analyzer(batch).items()
+                }
+            except Exception as error:
+                if attempt_index < max_attempts:
+                    continue
+                results.append(
+                    Phase0BatchResult(
+                        batch_index=batch.index,
+                        input_paths=batch.input_paths,
+                        status=Phase0BatchStatus.FAILED,
+                        error=str(error),
+                        attempt_count=attempt_index,
+                        max_attempts=max_attempts,
+                        remaining_attempts=0,
+                    )
+                )
+                break
+
             results.append(
                 Phase0BatchResult(
                     batch_index=batch.index,
                     input_paths=batch.input_paths,
-                    status=Phase0BatchStatus.FAILED,
-                    error=str(error),
+                    status=Phase0BatchStatus.COMPLETED,
+                    candidates_by_aspect=candidates_by_aspect,
+                    attempt_count=attempt_index,
+                    max_attempts=max_attempts,
+                    remaining_attempts=max_attempts - attempt_index,
                 )
             )
-            continue
-
-        results.append(
-            Phase0BatchResult(
-                batch_index=batch.index,
-                input_paths=batch.input_paths,
-                status=Phase0BatchStatus.COMPLETED,
-                candidates_by_aspect=candidates_by_aspect,
-            )
-        )
+            break
 
     return tuple(results)
 
@@ -287,6 +305,18 @@ def build_phase0_batch_run_report(
             "error": batch_result.error,
             "output_paths": list(batch_result.output_paths),
             "retryable": batch_result.status == Phase0BatchStatus.FAILED,
+            "attempt_count": batch_result.attempt_count,
+            "max_attempts": batch_result.max_attempts,
+            "remaining_attempts": batch_result.remaining_attempts,
+            "retry_exhausted": (
+                batch_result.status == Phase0BatchStatus.FAILED
+                and batch_result.remaining_attempts == 0
+            ),
+            "next_retry_scope": (
+                "same_batch"
+                if batch_result.status == Phase0BatchStatus.FAILED
+                else None
+            ),
         }
         for batch_result in batch_results
     ]

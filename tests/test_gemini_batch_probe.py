@@ -54,6 +54,8 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
                 "prompt.txt",
                 "--timeout-seconds",
                 "7",
+                "--max-attempts",
+                "3",
             ]
         )
 
@@ -64,6 +66,7 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
         self.assertEqual(args.model, "gemini-test-model")
         self.assertEqual(args.prompt_file, Path("prompt.txt"))
         self.assertEqual(args.timeout_seconds, 7)
+        self.assertEqual(args.max_attempts, 3)
 
     def test_batch_command_uses_safe_default_output_dir(self):
         args = parse_args([])
@@ -71,6 +74,7 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
         self.assertEqual(args.run_dir, DEFAULT_BATCH_RUN_DIR)
         self.assertEqual(args.input_dir, "reference_images")
         self.assertEqual(args.batch_size, 2)
+        self.assertEqual(args.max_attempts, 1)
 
     def test_batch_command_requires_env_api_key_before_api_call(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -191,9 +195,17 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
             image_analysis["images"][0]["traits"]["rendering"],
             ["clean linework a"],
         )
+        self.assertEqual(len(image_analysis["raw_responses"]), 1)
+        self.assertEqual(
+            image_analysis["raw_responses"][0]["validation_status"],
+            "valid",
+        )
         self.assertEqual(report["summary"]["total_batches"], 1)
         self.assertEqual(report["summary"]["completed_batches"], 1)
         self.assertEqual(report["summary"]["failed_batches"], 0)
+        self.assertEqual(report["batches"][0]["attempt_count"], 1)
+        self.assertEqual(report["batches"][0]["max_attempts"], 1)
+        self.assertEqual(report["batches"][0]["remaining_attempts"], 0)
         self.assertEqual(
             report["batches"][0]["output_paths"],
             ["phase0/reference_image_analysis.json"],
@@ -276,13 +288,105 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
         self.assertEqual(report["summary"]["retryable_batch_indexes"], [1])
         self.assertEqual(report["batches"][1]["status"], "failed")
         self.assertIn("b.png", report["batches"][1]["error"])
+        self.assertEqual(report["batches"][1]["attempt_count"], 1)
+        self.assertEqual(report["batches"][1]["max_attempts"], 1)
+        self.assertEqual(report["batches"][1]["remaining_attempts"], 0)
+        self.assertTrue(report["batches"][1]["retry_exhausted"])
         self.assertEqual(
             [record["analysis_status"] for record in image_analysis["images"]],
             ["completed", "failed"],
         )
         self.assertEqual(image_analysis["images"][1]["path"], "reference_images/b.png")
         self.assertIn("HTTP 500", image_analysis["images"][1]["error"])
+        self.assertEqual(len(image_analysis["raw_responses"]), 1)
+        self.assertEqual(
+            image_analysis["raw_responses"][0]["validation_status"],
+            "valid",
+        )
         self.assertEqual(len(candidates["aspects"]["rendering"]), 1)
+
+    def test_batch_command_retries_failed_batch_with_configured_attempt_budget(self):
+        calls_by_image = {}
+
+        class FakeClient:
+            def __init__(self, *, api_key, model, prompt, timeout_seconds):
+                self.model = model
+
+            def analyze_images(self, *, image_paths, source_images):
+                first_name = image_paths[0].name
+                calls_by_image[first_name] = calls_by_image.get(first_name, 0) + 1
+                if first_name == "b.png" and calls_by_image[first_name] == 1:
+                    return "not json yet"
+                return json.dumps(
+                    {
+                        "images": [
+                            {
+                                "path": source_images[0],
+                                "rendering": [f"clean linework {Path(source_images[0]).stem}"],
+                                "color_light": [],
+                                "texture_artifacts": [],
+                                "notes": "fixture response",
+                            }
+                        ]
+                    }
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "gemini-batch"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+            (reference_dir / "b.png").write_bytes(_png_header_bytes(width=4, height=5))
+
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}, clear=True),
+                patch("style_fit_profiler.gemini_batch_probe.GeminiImageAnalysisClient", FakeClient),
+                redirect_stdout(io.StringIO()),
+            ):
+                result = main(
+                    [
+                        "--project-root",
+                        str(project_root),
+                        "--run-dir",
+                        str(run_dir),
+                        "--batch-size",
+                        "1",
+                        "--max-attempts",
+                        "2",
+                    ]
+                )
+
+            image_analysis = json.loads(
+                (run_dir / "phase0" / "reference_image_analysis.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            report = json.loads(
+                (run_dir / "phase0" / "batch_run_report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls_by_image, {"a.png": 1, "b.png": 2})
+        self.assertEqual(report["summary"]["completed_batches"], 2)
+        self.assertEqual(report["summary"]["failed_batches"], 0)
+        self.assertEqual(report["batches"][1]["attempt_count"], 2)
+        self.assertEqual(report["batches"][1]["max_attempts"], 2)
+        self.assertEqual(report["batches"][1]["remaining_attempts"], 0)
+        self.assertEqual(
+            [record["validation_status"] for record in image_analysis["raw_responses"]],
+            ["valid", "invalid_retryable", "valid"],
+        )
+        self.assertEqual(
+            [record["attempt_index"] for record in image_analysis["raw_responses"]],
+            [1, 1, 2],
+        )
+        self.assertIn(
+            "invalid Gemini batch trait JSON",
+            image_analysis["raw_responses"][1]["error"],
+        )
 
     def test_batch_probe_result_reports_failed_batches(self):
         result = GeminiBatchProbeResult(

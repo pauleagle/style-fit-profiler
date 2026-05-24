@@ -19,6 +19,7 @@ from .phase0 import StyleGeneCandidate
 
 
 DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_TIMEOUT_SECONDS = 60
 GEMINI_GENERATE_CONTENT_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
@@ -437,7 +438,7 @@ def call_gemini_generate_content(
     api_key: str,
     payload: Mapping[str, Any],
     model: str = DEFAULT_MODEL,
-    timeout_seconds: int = 60,
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """Call Gemini generateContent through REST and return the raw response."""
 
@@ -491,7 +492,7 @@ class GeminiImageAnalysisClient:
     api_key: str
     model: str = DEFAULT_MODEL
     prompt: str = DEFAULT_ANALYSIS_PROMPT
-    timeout_seconds: int = 60
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     payload_builder: Callable[..., Mapping[str, Any]] = build_generate_content_payload
     batch_payload_builder: Callable[..., Mapping[str, Any]] = build_batch_generate_content_payload
     generate_content: Callable[..., Mapping[str, Any]] = call_gemini_generate_content
@@ -623,6 +624,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Optional UTF-8 prompt file. Defaults to the Phase 0 probe prompt.",
     )
     parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help="Timeout for the Gemini generateContent request.",
+    )
+    parser.add_argument(
+        "--raw-output",
+        type=Path,
+        help="Optional path for saving the raw Gemini generateContent response JSON.",
+    )
+    parser.add_argument(
         "--raw",
         action="store_true",
         help="Print the raw Gemini generateContent response JSON.",
@@ -645,8 +657,16 @@ def main(argv: list[str] | None = None) -> int:
         api_key=api_key,
         model=args.model,
         prompt=prompt,
+        timeout_seconds=args.timeout_seconds,
     )
     response = client.generate_content_response(args.image_path)
+
+    if args.raw_output is not None:
+        args.raw_output.parent.mkdir(parents=True, exist_ok=True)
+        args.raw_output.write_text(
+            json.dumps(response, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     if args.raw:
         print(json.dumps(response, ensure_ascii=False, indent=2))
