@@ -221,7 +221,7 @@ atomic item decomposition。
 | `DA-CR-001-003` | `resolved-by-spec-decision` | No | No |
 | `DA-CR-001-004` | `resolved-by-playbook-change` | No | No |
 | `DA-CR-001-005` | `resolved-by-spec-decision` | No | No |
-| `DA-CR-001-006` | `confirmed`，作為 pre-CR Phase 0 / EXP error-handling hardening prerequisite | Yes | No |
+| `DA-CR-001-006` | `resolved-by-spec-decision`，implementation pending | Yes | No |
 
 ## DA-CR-001-001: Morandi palette token typo
 
@@ -310,8 +310,19 @@ atomic item decomposition。
 - Decision：已確認 human batch 成功是有價值的 Phase 0 / EXP integration evidence，
   不回溯阻擋 Phase 0 / 相關 EXP；但進入 CR-001 atomic decomposition 前，仍必須先
   補完 Phase 0 / EXP 端面向 CR-001 的 error handling 與 fixture-based validation。
-- Status：`confirmed`（pre-CR Phase 0 / EXP error-handling prerequisite；不阻擋既有
-  Phase 0 / EXP）。
+  對應流程採 `raw -> valid raw -> downstream` gate：Gemini batch 或 single-image
+  raw response 必須先保留為 raw evidence；只有通過 deterministic parser、schema
+  validation、source-image traceability 與 optional palette validation 的 valid raw，
+  才能進入 mapper、Phase 0 projection 或 CR-001 native artifact。Partial failure
+  不得阻塞已 valid 的 raw，但必須在 report 中標示 failed scope、retryability、
+  attempt count、remaining attempts 與後續 retry target。
+- Code review note：retry 限次必須抽到 config / CLI policy 層，不得寫死在
+  parser、batch runner、Gemini client 或 mapper 中。其他會影響執行成本、可靠性或
+  provider 限制的 magic numbers（例如 batch size、timeout seconds、inline image
+  byte limit、backoff interval、attempt budget）也應由具名 config / policy owner
+  管理；若必須保留為常數，需有明確名稱、註解理由與測試覆蓋。
+- Status：`resolved-by-spec-decision`；implementation pending（pre-CR Phase 0 / EXP
+  error-handling prerequisite；不阻擋既有 Phase 0 / EXP）。
 
 Open questions：
 
