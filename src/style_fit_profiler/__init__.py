@@ -11,6 +11,7 @@ from .cr001 import (
     CR001_CHARACTER_APPEAL_LOCI,
     CR001_EXPECTED_STYLE_LOCI,
     CR001_IMPRESSION_COLOR_CHANNELS,
+    CR001_NATIVE_ARTIFACT_PATH,
     CR001_NATIVE_ARTIFACT_SCHEMA_VERSION,
     CR001_NATIVE_ARTIFACT_SOURCE,
     CR001RawParseResult,
@@ -19,7 +20,9 @@ from .cr001 import (
     normalize_cr001_impression_colors,
     parse_cr001_raw_response,
     validate_cr001_gene_payload,
+    validate_cr001_native_artifact_document,
     validate_cr001_record,
+    write_cr001_native_artifact_document,
 )
 from .notebook import (
     DEFAULT_COLAB_NOTEBOOK_NAME,
@@ -80,6 +83,7 @@ __all__ = [
     "CR001_CHARACTER_APPEAL_LOCI",
     "CR001_EXPECTED_STYLE_LOCI",
     "CR001_IMPRESSION_COLOR_CHANNELS",
+    "CR001_NATIVE_ARTIFACT_PATH",
     "CR001_NATIVE_ARTIFACT_SCHEMA_VERSION",
     "CR001_NATIVE_ARTIFACT_SOURCE",
     "CR001RawParseResult",
@@ -136,7 +140,9 @@ __all__ = [
     "validate_style_gene_candidate_aspects",
     "validate_style_gene_candidates_document",
     "validate_cr001_gene_payload",
+    "validate_cr001_native_artifact_document",
     "validate_cr001_record",
+    "write_cr001_native_artifact_document",
     "write_notebook_phase0_export_zip",
     "write_style_gene_candidates",
 ]

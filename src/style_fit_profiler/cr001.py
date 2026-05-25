@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 import copy
 from dataclasses import dataclass
 import json
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 from typing import Any
 
@@ -30,6 +30,7 @@ CR001_IMPRESSION_COLOR_CHANNELS = ("main", "secondary", "accent")
 CR001_HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 CR001_NATIVE_ARTIFACT_SCHEMA_VERSION = "cr001.v1"
 CR001_NATIVE_ARTIFACT_SOURCE = "cr001_reference_image_analysis"
+CR001_NATIVE_ARTIFACT_PATH = "phase0/cr001_reference_image_analysis.json"
 
 CR001_ALLELE_REGISTRY = {
     "genre": (
@@ -221,6 +222,50 @@ def build_cr001_native_artifact_document(
         "source": CR001_NATIVE_ARTIFACT_SOURCE,
         "records": artifact_records,
     }
+
+
+def write_cr001_native_artifact_document(
+    *,
+    run_dir: Path,
+    artifact_document: Mapping[str, Any],
+) -> str:
+    """Write the CR-001 native artifact and return the run-relative path."""
+
+    validate_cr001_native_artifact_document(artifact_document)
+
+    artifact_path = run_dir / CR001_NATIVE_ARTIFACT_PATH
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps(artifact_document, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return artifact_path.relative_to(run_dir).as_posix()
+
+
+def validate_cr001_native_artifact_document(artifact_document: Mapping[str, Any]) -> None:
+    """Validate the CR-001 native artifact container contract."""
+
+    if not isinstance(artifact_document, Mapping):
+        raise CR001ValidationError("CR-001 native artifact must be an object")
+    if tuple(artifact_document) != ("schema_version", "source", "records"):
+        raise CR001ValidationError(
+            "CR-001 native artifact must contain schema_version, source, and records"
+        )
+    if artifact_document["schema_version"] != CR001_NATIVE_ARTIFACT_SCHEMA_VERSION:
+        raise CR001ValidationError("CR-001 native artifact schema_version is invalid")
+    if artifact_document["source"] != CR001_NATIVE_ARTIFACT_SOURCE:
+        raise CR001ValidationError("CR-001 native artifact source is invalid")
+
+    records = artifact_document["records"]
+    if isinstance(records, str) or not isinstance(records, Sequence):
+        raise CR001ValidationError("CR-001 native artifact records must be a list")
+    for record in records:
+        if not isinstance(record, Mapping):
+            raise CR001ValidationError("CR-001 native artifact record must be an object")
+        source_image_error = _source_image_error(record.get("source_image"))
+        if source_image_error is not None:
+            raise CR001ValidationError(source_image_error)
+        validate_cr001_record(record)
 
 
 def validate_cr001_record(record: Mapping[str, Any]) -> None:

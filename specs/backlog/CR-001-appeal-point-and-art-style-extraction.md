@@ -335,8 +335,8 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 
 Status：`accepted-atomic-decomposition`；the revised atomic table below is accepted
 as CR-001 v1 implementation scope.
-workflow_step：`Step 5 - Spec-Based Test Design`；下一步由 `CR-001-05B`
-native artifact writer 開始，依 revised atomic items 順序實作。
+workflow_step：`Step 5 - Spec-Based Test Design`；下一步由 `CR-001-06A`
+Gemini prompt contract 開始，依 revised atomic items 順序實作。
 
 Current DA conclusion：
 
