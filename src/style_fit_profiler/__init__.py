@@ -10,6 +10,9 @@ from .cr001 import (
     CR001_CANONICAL_LOCI,
     CR001_CHARACTER_APPEAL_LOCI,
     CR001_EXPECTED_STYLE_LOCI,
+    CR001ValidationError,
+    validate_cr001_gene_payload,
+    validate_cr001_record,
 )
 from .notebook import (
     DEFAULT_COLAB_NOTEBOOK_NAME,
@@ -69,6 +72,7 @@ __all__ = [
     "CR001_CANONICAL_LOCI",
     "CR001_CHARACTER_APPEAL_LOCI",
     "CR001_EXPECTED_STYLE_LOCI",
+    "CR001ValidationError",
     "DEFAULT_COLAB_NOTEBOOK_NAME",
     "DEFAULT_COLAB_EXPORT_ZIP_NAME",
     "DEFAULT_COLAB_PROJECT_ROOT",
@@ -117,6 +121,8 @@ __all__ = [
     "stage_notebook_reference_images",
     "validate_style_gene_candidate_aspects",
     "validate_style_gene_candidates_document",
+    "validate_cr001_gene_payload",
+    "validate_cr001_record",
     "write_notebook_phase0_export_zip",
     "write_style_gene_candidates",
 ]

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from typing import Any
+
 
 CR001_EXPECTED_STYLE_LOCI = (
     "genre",
@@ -111,3 +114,120 @@ CR001_ALLELE_REGISTRY = {
         "structural-drapery",
     ),
 }
+
+
+class CR001ValidationError(ValueError):
+    """Raised when an in-memory CR-001 record violates the v1 contract."""
+
+
+def validate_cr001_record(record: Mapping[str, Any]) -> None:
+    """Validate the CR-001 v1 in-memory record shape and canonical gene payload."""
+
+    if not isinstance(record, Mapping):
+        raise CR001ValidationError("CR-001 record must be an object")
+
+    payload = record.get("appeal_point_and_art_style")
+    if not isinstance(payload, Mapping):
+        raise CR001ValidationError(
+            "CR-001 record must include appeal_point_and_art_style object"
+        )
+
+    summary = record.get("cr001_summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise CR001ValidationError("CR-001 record must include non-empty cr001_summary")
+
+    validate_cr001_gene_payload(payload)
+
+
+def validate_cr001_gene_payload(payload: Mapping[str, Any]) -> None:
+    """Validate CR-001 v1 canonical style and appeal gene groups."""
+
+    if not isinstance(payload, Mapping):
+        raise CR001ValidationError("CR-001 gene payload must be an object")
+
+    allowed_payload_keys = {
+        "expected_style_genes",
+        "character_appeal_genes",
+        "impression_colors",
+    }
+    unknown_payload_keys = sorted(set(payload) - allowed_payload_keys)
+    if unknown_payload_keys:
+        raise CR001ValidationError(
+            f"CR-001 gene payload has unknown key: {', '.join(unknown_payload_keys)}"
+        )
+
+    _validate_loci_group(
+        group_name="expected_style_genes",
+        group_payload=payload.get("expected_style_genes"),
+        expected_loci=CR001_EXPECTED_STYLE_LOCI,
+    )
+    _validate_loci_group(
+        group_name="character_appeal_genes",
+        group_payload=payload.get("character_appeal_genes"),
+        expected_loci=CR001_CHARACTER_APPEAL_LOCI,
+    )
+
+
+def _validate_loci_group(
+    *,
+    group_name: str,
+    group_payload: Any,
+    expected_loci: tuple[str, ...],
+) -> None:
+    if not isinstance(group_payload, Mapping):
+        raise CR001ValidationError(f"CR-001 {group_name} must be an object")
+
+    actual_loci = set(group_payload)
+    expected_loci_set = set(expected_loci)
+    missing_loci = sorted(expected_loci_set - actual_loci)
+    unknown_loci = sorted(actual_loci - expected_loci_set)
+    if missing_loci:
+        raise CR001ValidationError(
+            f"CR-001 {group_name} missing locus: {', '.join(missing_loci)}"
+        )
+    if unknown_loci:
+        raise CR001ValidationError(
+            f"CR-001 {group_name} has unknown locus: {', '.join(unknown_loci)}"
+        )
+
+    for locus in expected_loci:
+        _validate_locus_payload(locus=locus, locus_payload=group_payload[locus])
+
+
+def _validate_locus_payload(*, locus: str, locus_payload: Any) -> None:
+    if not isinstance(locus_payload, Mapping):
+        raise CR001ValidationError(f"CR-001 locus must be an object: {locus}")
+    if tuple(locus_payload) != ("selected", "intensity"):
+        raise CR001ValidationError(
+            f"CR-001 locus must contain selected and intensity only: {locus}"
+        )
+
+    selected = locus_payload["selected"]
+    intensity = locus_payload["intensity"]
+    if (
+        isinstance(selected, str)
+        or not isinstance(selected, Sequence)
+        or not 1 <= len(selected) <= 4
+    ):
+        raise CR001ValidationError(
+            f"CR-001 selected must contain 1 to 4 alleles: {locus}"
+        )
+    if isinstance(intensity, str) or not isinstance(intensity, Sequence):
+        raise CR001ValidationError(f"CR-001 intensity must be a list: {locus}")
+    if len(selected) != len(intensity):
+        raise CR001ValidationError(
+            f"CR-001 selected and intensity length mismatch: {locus}"
+        )
+
+    allowed_alleles = set(CR001_ALLELE_REGISTRY[locus])
+    for allele in selected:
+        if not isinstance(allele, str) or allele not in allowed_alleles:
+            raise CR001ValidationError(
+                f"CR-001 selected allele is not in registry: {locus}"
+            )
+
+    for value in intensity:
+        if type(value) not in {int, float} or not 0 <= value <= 1:
+            raise CR001ValidationError(
+                f"CR-001 intensity must be a number between 0 and 1: {locus}"
+            )
