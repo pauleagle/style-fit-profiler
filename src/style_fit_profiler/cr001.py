@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import re
 from typing import Any
 
 
@@ -21,6 +22,8 @@ CR001_CHARACTER_APPEAL_LOCI = (
     "clothing_fit",
 )
 CR001_CANONICAL_LOCI = CR001_EXPECTED_STYLE_LOCI + CR001_CHARACTER_APPEAL_LOCI
+CR001_IMPRESSION_COLOR_CHANNELS = ("main", "secondary", "accent")
+CR001_HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 CR001_ALLELE_REGISTRY = {
     "genre": (
@@ -166,6 +169,43 @@ def validate_cr001_gene_payload(payload: Mapping[str, Any]) -> None:
         group_payload=payload.get("character_appeal_genes"),
         expected_loci=CR001_CHARACTER_APPEAL_LOCI,
     )
+    if "impression_colors" in payload:
+        normalize_cr001_impression_colors(payload["impression_colors"])
+
+
+def normalize_cr001_impression_colors(impression_colors: Mapping[str, Any]) -> dict[str, str]:
+    """Validate and normalize optional CR-001 impression colors."""
+
+    if not isinstance(impression_colors, Mapping):
+        raise CR001ValidationError("CR-001 impression_colors must be an object")
+
+    expected_channels = set(CR001_IMPRESSION_COLOR_CHANNELS)
+    actual_channels = set(impression_colors)
+    missing_channels = sorted(expected_channels - actual_channels)
+    unknown_channels = sorted(actual_channels - expected_channels)
+    if missing_channels:
+        raise CR001ValidationError(
+            f"CR-001 impression_colors missing channel: {', '.join(missing_channels)}"
+        )
+    if unknown_channels:
+        raise CR001ValidationError(
+            f"CR-001 impression_colors has unknown channel: {', '.join(unknown_channels)}"
+        )
+
+    normalized_colors: dict[str, str] = {}
+    for channel in CR001_IMPRESSION_COLOR_CHANNELS:
+        color = impression_colors[channel]
+        if not isinstance(color, str):
+            raise CR001ValidationError(
+                f"CR-001 impression_colors channel must be a string: {channel}"
+            )
+        if CR001_HEX_COLOR_PATTERN.fullmatch(color) is None:
+            raise CR001ValidationError(
+                f"CR-001 impression_colors channel must be #RRGGBB hex: {channel}"
+            )
+        normalized_colors[channel] = color.upper()
+
+    return normalized_colors
 
 
 def _validate_loci_group(

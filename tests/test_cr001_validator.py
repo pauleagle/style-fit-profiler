@@ -61,10 +61,12 @@ class CR001RecordValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(CR001ValidationError, "unknown key"):
             validate_cr001_record(record)
 
-    def test_cr001_02_allows_impression_colors_without_palette_validation(self):
+    def test_cr001_02_allows_valid_impression_colors(self):
         record = _valid_record()
         record["appeal_point_and_art_style"]["impression_colors"] = {
-            "main": "palette validation belongs to CR-001-03"
+            "main": "#88C8FF",
+            "secondary": "#F8B0D0",
+            "accent": "#FFF2A8",
         }
 
         validate_cr001_record(record)
