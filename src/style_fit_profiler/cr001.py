@@ -10,16 +10,11 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 from typing import Any, Callable
 
-from .gemini_image_probe import (
-    DEFAULT_MODEL,
-    DEFAULT_TIMEOUT_SECONDS,
-    call_gemini_generate_content,
-    extract_response_text,
-    read_inline_image_part,
-)
 from .phase0 import plan_phase0_batches
 
 
+DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_TIMEOUT_SECONDS = 60
 CR001_EXPECTED_STYLE_LOCI = (
     "genre",
     "line_art",
@@ -185,6 +180,18 @@ class CR001BatchExtractionResult:
         return int(self.summary.get("failed_batches", 0)) > 0
 
 
+def _call_cr001_gemini_generate_content(**kwargs: Any) -> Mapping[str, Any]:
+    from .gemini_image_probe import call_gemini_generate_content
+
+    return call_gemini_generate_content(**kwargs)
+
+
+def _read_cr001_inline_image_part(image_path: Path) -> dict[str, Any]:
+    from .gemini_image_probe import read_inline_image_part
+
+    return read_inline_image_part(image_path)
+
+
 @dataclass(frozen=True)
 class CR001GeminiAnalysisClient:
     """Injectable CR-001 Gemini image-analysis client."""
@@ -193,7 +200,7 @@ class CR001GeminiAnalysisClient:
     model: str = DEFAULT_MODEL
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     payload_builder: Callable[..., Mapping[str, Any]] | None = None
-    generate_content: Callable[..., Mapping[str, Any]] = call_gemini_generate_content
+    generate_content: Callable[..., Mapping[str, Any]] = _call_cr001_gemini_generate_content
 
     def __post_init__(self) -> None:
         if self.payload_builder is None:
@@ -226,6 +233,8 @@ class CR001GeminiAnalysisClient:
         )
 
     def analyze_image(self, *, image_path: Path, source_image: str) -> str:
+        from .gemini_image_probe import extract_response_text
+
         return extract_response_text(
             self.generate_content_response(
                 image_path=image_path,
@@ -283,7 +292,7 @@ def build_cr001_generate_content_payload(
         "contents": [
             {
                 "parts": [
-                    read_inline_image_part(image_path),
+                    _read_cr001_inline_image_part(image_path),
                     {"text": build_cr001_gemini_prompt(source_image_label=source_image)},
                 ]
             }

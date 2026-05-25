@@ -20,6 +20,10 @@ from .phase0 import StyleGeneCandidate
 
 DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_TIMEOUT_SECONDS = 60
+DEFAULT_IMAGE_RUN_DIR = Path("runs/manual-gemini-single")
+DEFAULT_IMAGE_BACKEND = "cr001"
+LEGACY_IMAGE_BACKEND = "legacy"
+CR001_IMAGE_BACKEND = "cr001"
 GEMINI_GENERATE_CONTENT_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
@@ -607,16 +611,39 @@ def _manifest_record_source_image(record: Mapping[str, Any]) -> str:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Analyze one local image with Gemini and print Phase 0 style traits.",
+        description="Analyze one local image with Gemini.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Example:\n"
             "  $env:PYTHONPATH = 'src'\n"
             "  $env:GEMINI_API_KEY = '<your key>'\n"
-            "  python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png"
+            "  python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png\n"
+            "  python -m style_fit_profiler.gemini_image_probe "
+            "--backend legacy reference_images/ref-001.png"
         ),
     )
+    parser.add_argument(
+        "--backend",
+        choices=(CR001_IMAGE_BACKEND, LEGACY_IMAGE_BACKEND),
+        default=DEFAULT_IMAGE_BACKEND,
+        help=(
+            "Single-image analysis backend. Defaults to CR-001 native artifacts; "
+            "use legacy for EXP Phase 0 trait JSON."
+        ),
+    )
+    parser.add_argument(
+        "--project-root",
+        type=Path,
+        default=Path("."),
+        help="Project root containing the reference image path.",
+    )
     parser.add_argument("image_path", type=Path, help="Path to a local image file.")
+    parser.add_argument(
+        "--run-dir",
+        type=Path,
+        default=DEFAULT_IMAGE_RUN_DIR,
+        help="Output run directory for CR-001 native artifacts.",
+    )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Gemini model name.")
     parser.add_argument(
         "--prompt-file",
@@ -632,7 +659,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--raw-output",
         type=Path,
-        help="Optional path for saving the raw Gemini generateContent response JSON.",
+        help=(
+            "Optional path for saving the legacy raw Gemini response or CR-001 "
+            "raw validation record."
+        ),
     )
     parser.add_argument(
         "--raw",
@@ -647,6 +677,38 @@ def main(argv: list[str] | None = None) -> int:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise GeminiImageProbeError("GEMINI_API_KEY is not set")
+
+    if args.backend == CR001_IMAGE_BACKEND:
+        if args.prompt_file is not None:
+            raise GeminiImageProbeError(
+                "--prompt-file is only supported with --backend legacy"
+            )
+        if args.raw:
+            raise GeminiImageProbeError("--raw is only supported with --backend legacy")
+        from .cr001 import CR001GeminiAnalysisClient
+        from .cr001_gemini_probe import run_cr001_single_probe
+
+        project_root = args.project_root.resolve()
+        run_dir = _resolve_run_dir(project_root=project_root, run_dir=args.run_dir)
+        source_image = _source_image_from_path(
+            project_root=project_root,
+            image_path=args.image_path,
+        )
+        client = CR001GeminiAnalysisClient(
+            api_key=api_key,
+            model=args.model,
+            timeout_seconds=args.timeout_seconds,
+        )
+        result = run_cr001_single_probe(
+            project_root=project_root,
+            source_image=source_image,
+            run_dir=run_dir,
+            client=client,
+            model=args.model,
+            raw_output=args.raw_output,
+        )
+        print(json.dumps(result.to_json_record(), ensure_ascii=False, indent=2))
+        return 1 if result.has_failed_images else 0
 
     prompt = (
         args.prompt_file.read_text(encoding="utf-8")
@@ -674,6 +736,24 @@ def main(argv: list[str] | None = None) -> int:
         print(extract_response_text(response))
 
     return 0
+
+
+def _resolve_run_dir(*, project_root: Path, run_dir: Path) -> Path:
+    if run_dir.is_absolute():
+        return run_dir
+    return project_root / run_dir
+
+
+def _source_image_from_path(*, project_root: Path, image_path: Path) -> str:
+    resolved_image_path = image_path
+    if not resolved_image_path.is_absolute():
+        resolved_image_path = project_root / resolved_image_path
+    try:
+        return resolved_image_path.resolve().relative_to(project_root).as_posix()
+    except ValueError as error:
+        raise GeminiImageProbeError(
+            "single-image Gemini probe image_path must be under project root"
+        ) from error
 
 
 if __name__ == "__main__":

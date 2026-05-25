@@ -1,5 +1,6 @@
 from pathlib import Path
 from contextlib import redirect_stdout
+import copy
 import hashlib
 import io
 import json
@@ -14,8 +15,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from style_fit_profiler.gemini_image_probe import (  # noqa: E402
+    CR001_IMAGE_BACKEND,
     DEFAULT_ANALYSIS_PROMPT,
     DEFAULT_BATCH_ANALYSIS_PROMPT,
+    DEFAULT_IMAGE_BACKEND,
+    DEFAULT_IMAGE_RUN_DIR,
     GEMINI_TRAIT_ASPECTS,
     GeminiImageAnalysisClient,
     GeminiImageProbeError,
@@ -39,6 +43,9 @@ from style_fit_profiler.phase0 import (  # noqa: E402
 )
 
 
+CR001_FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "cr001"
+
+
 def _png_header_bytes(*, width, height):
     return (
         b"\x89PNG\r\n\x1a\n"
@@ -48,6 +55,22 @@ def _png_header_bytes(*, width, height):
         + height.to_bytes(4, "big")
         + b"\x08\x02\x00\x00\x00"
         + b"\x00\x00\x00\x00"
+    )
+
+
+def _valid_cr001_raw_response(*, source_image="reference_images/ref-001.png"):
+    document = json.loads(
+        (CR001_FIXTURE_DIR / "cr001_native_artifact_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    record = copy.deepcopy(document["records"][0])
+    record["source_image"] = source_image
+    return json.dumps(
+        {
+            "appeal_point_and_art_style": record["appeal_point_and_art_style"],
+            "cr001_summary": record["cr001_summary"],
+        }
     )
 
 
@@ -643,7 +666,11 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
             ]
         )
 
+        self.assertEqual(args.backend, DEFAULT_IMAGE_BACKEND)
+        self.assertEqual(args.backend, CR001_IMAGE_BACKEND)
+        self.assertEqual(args.project_root, Path("."))
         self.assertEqual(args.image_path, Path("reference_images/ref-001.png"))
+        self.assertEqual(args.run_dir, DEFAULT_IMAGE_RUN_DIR)
         self.assertEqual(args.model, "gemini-test-model")
         self.assertEqual(args.prompt_file, Path("prompt.txt"))
         self.assertEqual(args.timeout_seconds, 7)
@@ -655,7 +682,104 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
             with self.assertRaisesRegex(GeminiImageProbeError, "GEMINI_API_KEY"):
                 main(["reference_images/ref-001.png"])
 
-    def test_exp_001e_manual_command_uses_client_wrapper_without_real_api(self):
+    def test_exp_001e_manual_command_defaults_to_cr001_native_backend(self):
+        calls = []
+
+        class FakeClient:
+            def __init__(self, *, api_key, model, timeout_seconds):
+                calls.append(("init", api_key, model, timeout_seconds))
+                self.model = model
+
+            def analyze_image(self, *, image_path, source_image):
+                calls.append(("analyze_image", image_path.name, source_image))
+                return _valid_cr001_raw_response(source_image=source_image)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "manual-gemini-single"
+            reference_dir.mkdir()
+            (reference_dir / "ref-001.png").write_bytes(
+                _png_header_bytes(width=2, height=3)
+            )
+
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}, clear=True),
+                patch("style_fit_profiler.cr001.CR001GeminiAnalysisClient", FakeClient),
+                redirect_stdout(io.StringIO()) as stdout,
+            ):
+                result = main(
+                    [
+                        "reference_images/ref-001.png",
+                        "--project-root",
+                        str(project_root),
+                        "--run-dir",
+                        str(run_dir),
+                        "--model",
+                        "gemini-test-model",
+                    ]
+                )
+
+            stdout_record = json.loads(stdout.getvalue())
+            manifest = json.loads(
+                (run_dir / "phase0" / "reference_image_manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            artifact = json.loads(
+                (run_dir / "phase0" / "cr001_reference_image_analysis.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            calls,
+            [
+                ("init", "test-api-key", "gemini-test-model", 60),
+                ("analyze_image", "ref-001.png", "reference_images/ref-001.png"),
+            ],
+        )
+        self.assertEqual(
+            [record["path"] for record in manifest["images"]],
+            ["reference_images/ref-001.png"],
+        )
+        self.assertEqual(
+            [record["source_image"] for record in artifact["records"]],
+            ["reference_images/ref-001.png"],
+        )
+        self.assertTrue(stdout_record["valid"])
+        self.assertEqual(
+            stdout_record["native_artifact_path"],
+            "phase0/cr001_reference_image_analysis.json",
+        )
+
+    def test_exp_001e_manual_command_rejects_legacy_only_flags_for_cr001_backend(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            prompt_file = project_root / "prompt.txt"
+            prompt_file.write_text("legacy prompt", encoding="utf-8")
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}, clear=True),
+                self.assertRaisesRegex(GeminiImageProbeError, "backend legacy"),
+            ):
+                main(
+                    [
+                        "reference_images/ref-001.png",
+                        "--project-root",
+                        str(project_root),
+                        "--prompt-file",
+                        str(prompt_file),
+                    ]
+                )
+
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}, clear=True),
+                self.assertRaisesRegex(GeminiImageProbeError, "backend legacy"),
+            ):
+                main(["reference_images/ref-001.png", "--raw"])
+
+    def test_exp_001e_legacy_manual_command_uses_client_wrapper_without_real_api(self):
         calls = []
 
         class FakeClient:
@@ -686,7 +810,7 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
             patch("style_fit_profiler.gemini_image_probe.GeminiImageAnalysisClient", FakeClient),
             redirect_stdout(io.StringIO()) as stdout,
         ):
-            result = main(["reference_images/ref-001.png", "--raw"])
+            result = main(["--backend", "legacy", "reference_images/ref-001.png", "--raw"])
 
         self.assertEqual(result, 0)
         self.assertIn('"candidates"', stdout.getvalue())
@@ -698,7 +822,7 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
             ],
         )
 
-    def test_exp_001e_manual_command_can_save_raw_response_before_extracting_text(self):
+    def test_exp_001e_legacy_manual_command_can_save_raw_response_before_extracting_text(self):
         class FakeClient:
             def __init__(self, *, api_key, model, prompt, timeout_seconds):
                 pass
@@ -730,6 +854,8 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
             ):
                 result = main(
                     [
+                        "--backend",
+                        "legacy",
                         "reference_images/ref-001.png",
                         "--raw-output",
                         str(raw_output),

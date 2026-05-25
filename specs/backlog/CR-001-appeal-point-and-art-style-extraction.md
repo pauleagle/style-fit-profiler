@@ -426,6 +426,15 @@ Implementation progress:
   This lets the existing Phase 0 manual batch command act as the new CR-001
   Phase 0 path. The prior EXP / legacy three-aspect output remains available
   only through `--backend legacy`.
+- Legacy manual single-image entrypoint aligned: the existing command now also
+  defaults to the CR-001 native backend:
+
+  ```text
+  python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png
+  ```
+
+  The prior EXP / legacy three-aspect single-image output remains available
+  only through `--backend legacy`.
 
 ## Decision: CR-001 v1 native baseline freeze
 
