@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+import json
+from pathlib import PurePosixPath, PureWindowsPath
 import re
 from typing import Any
 
@@ -121,6 +124,71 @@ CR001_ALLELE_REGISTRY = {
 
 class CR001ValidationError(ValueError):
     """Raised when an in-memory CR-001 record violates the v1 contract."""
+
+
+@dataclass(frozen=True)
+class CR001RawParseResult:
+    """Result of the CR-001 raw response valid-raw gate."""
+
+    valid: bool
+    source_image: str
+    record: dict[str, Any] | None = None
+    error: str | None = None
+
+
+def parse_cr001_raw_response(*, raw_response: str, source_image: str) -> CR001RawParseResult:
+    """Parse raw CR-001 JSON text into a validated source-linked record."""
+
+    source_image_error = _source_image_error(source_image)
+    if source_image_error is not None:
+        return CR001RawParseResult(
+            valid=False,
+            source_image=source_image,
+            error=source_image_error,
+        )
+
+    try:
+        raw_document = json.loads(raw_response)
+    except json.JSONDecodeError as error:
+        return CR001RawParseResult(
+            valid=False,
+            source_image=source_image,
+            error=f"invalid CR-001 raw JSON: {error.msg}",
+        )
+
+    if not isinstance(raw_document, Mapping):
+        return CR001RawParseResult(
+            valid=False,
+            source_image=source_image,
+            error="CR-001 raw response must be an object",
+        )
+
+    allowed_raw_keys = {"appeal_point_and_art_style", "cr001_summary"}
+    unknown_raw_keys = sorted(set(raw_document) - allowed_raw_keys)
+    if unknown_raw_keys:
+        return CR001RawParseResult(
+            valid=False,
+            source_image=source_image,
+            error=f"CR-001 raw response has unknown key: {', '.join(unknown_raw_keys)}",
+        )
+
+    record = {
+        "source_image": source_image,
+        "appeal_point_and_art_style": raw_document.get("appeal_point_and_art_style"),
+        "cr001_summary": raw_document.get("cr001_summary"),
+    }
+
+    try:
+        validate_cr001_record(record)
+    except CR001ValidationError as error:
+        return CR001RawParseResult(
+            valid=False,
+            source_image=source_image,
+            error=str(error),
+        )
+
+    _normalize_record_palette(record)
+    return CR001RawParseResult(valid=True, source_image=source_image, record=record)
 
 
 def validate_cr001_record(record: Mapping[str, Any]) -> None:
@@ -271,3 +339,27 @@ def _validate_locus_payload(*, locus: str, locus_payload: Any) -> None:
             raise CR001ValidationError(
                 f"CR-001 intensity must be a number between 0 and 1: {locus}"
             )
+
+
+def _normalize_record_palette(record: dict[str, Any]) -> None:
+    payload = record["appeal_point_and_art_style"]
+    if "impression_colors" not in payload:
+        return
+    payload["impression_colors"] = normalize_cr001_impression_colors(
+        payload["impression_colors"]
+    )
+
+
+def _source_image_error(source_image: str) -> str | None:
+    if not isinstance(source_image, str) or not source_image.strip():
+        return "CR-001 source_image must be a non-empty relative path"
+
+    windows_path = PureWindowsPath(source_image)
+    if (
+        PurePosixPath(source_image).is_absolute()
+        or bool(windows_path.drive)
+        or bool(windows_path.root)
+    ):
+        return "CR-001 source_image must be a non-empty relative path"
+
+    return None
