@@ -8,7 +8,15 @@ from dataclasses import dataclass
 import json
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
-from typing import Any
+from typing import Any, Callable
+
+from .gemini_image_probe import (
+    DEFAULT_MODEL,
+    DEFAULT_TIMEOUT_SECONDS,
+    call_gemini_generate_content,
+    extract_response_text,
+    read_inline_image_part,
+)
 
 
 CR001_EXPECTED_STYLE_LOCI = (
@@ -138,6 +146,125 @@ class CR001RawParseResult:
     source_image: str
     record: dict[str, Any] | None = None
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class CR001GeminiRawAnalysis:
+    """Raw CR-001 response text for one source image before validation."""
+
+    source_image: str
+    response_text: str
+    model: str
+
+
+@dataclass(frozen=True)
+class CR001GeminiAnalysisClient:
+    """Injectable CR-001 Gemini image-analysis client."""
+
+    api_key: str
+    model: str = DEFAULT_MODEL
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    payload_builder: Callable[..., Mapping[str, Any]] | None = None
+    generate_content: Callable[..., Mapping[str, Any]] = call_gemini_generate_content
+
+    def __post_init__(self) -> None:
+        if self.payload_builder is None:
+            object.__setattr__(
+                self,
+                "payload_builder",
+                build_cr001_generate_content_payload,
+            )
+
+    def build_payload(self, *, image_path: Path, source_image: str) -> Mapping[str, Any]:
+        return self.payload_builder(
+            image_path=image_path,
+            source_image=source_image,
+        )
+
+    def generate_content_response(
+        self,
+        *,
+        image_path: Path,
+        source_image: str,
+    ) -> Mapping[str, Any]:
+        return self.generate_content(
+            api_key=self.api_key,
+            payload=self.build_payload(
+                image_path=image_path,
+                source_image=source_image,
+            ),
+            model=self.model,
+            timeout_seconds=self.timeout_seconds,
+        )
+
+    def analyze_image(self, *, image_path: Path, source_image: str) -> str:
+        return extract_response_text(
+            self.generate_content_response(
+                image_path=image_path,
+                source_image=source_image,
+            )
+        )
+
+
+@dataclass(frozen=True)
+class CR001GeminiRawExtractor:
+    """Opt-in raw CR-001 extractor backed by an injectable vision client."""
+
+    project_root: Path
+    client: Any
+    model: str | None = None
+
+    def __call__(
+        self,
+        reference_image_manifest_records: Sequence[Mapping[str, Any]],
+    ) -> tuple[CR001GeminiRawAnalysis, ...]:
+        raw_analyses: list[CR001GeminiRawAnalysis] = []
+        for record in reference_image_manifest_records:
+            source_image = _manifest_record_source_image(record)
+            try:
+                response_text = self.client.analyze_image(
+                    image_path=self.project_root / source_image,
+                    source_image=source_image,
+                )
+            except Exception as error:
+                raise RuntimeError(
+                    f"CR-001 Gemini raw extraction failed for {source_image}: {error}"
+                ) from error
+            raw_analyses.append(
+                CR001GeminiRawAnalysis(
+                    source_image=source_image,
+                    response_text=response_text,
+                    model=self.model or getattr(self.client, "model", DEFAULT_MODEL),
+                )
+            )
+        return tuple(raw_analyses)
+
+
+def build_cr001_generate_content_payload(
+    *,
+    image_path: Path,
+    source_image: str,
+) -> dict[str, Any]:
+    """Build a Gemini generateContent payload for one CR-001 reference image."""
+
+    source_image_error = _source_image_error(source_image)
+    if source_image_error is not None:
+        raise CR001ValidationError(source_image_error)
+
+    return {
+        "contents": [
+            {
+                "parts": [
+                    read_inline_image_part(image_path),
+                    {"text": build_cr001_gemini_prompt(source_image_label=source_image)},
+                ]
+            }
+        ],
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "temperature": 0.2,
+        },
+    }
 
 
 def build_cr001_gemini_prompt(source_image_label: str | None = None) -> str:
@@ -507,6 +634,17 @@ def _source_image_error(source_image: str) -> str | None:
         return "CR-001 source_image must be a non-empty relative path"
 
     return None
+
+
+def _manifest_record_source_image(record: Mapping[str, Any]) -> str:
+    if not isinstance(record, Mapping):
+        raise CR001ValidationError("CR-001 manifest record must be an object")
+
+    source_image = record.get("path")
+    source_image_error = _source_image_error(source_image)
+    if source_image_error is not None:
+        raise CR001ValidationError(source_image_error)
+    return source_image
 
 
 def _format_cr001_prompt_registry() -> str:

@@ -336,8 +336,8 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 
 Status：`active-implementation`；the revised atomic table below is accepted as
 CR-001 v1 implementation scope.
-workflow_step：`Step 6 - Implementation / CR-001-06B`；下一步由 `CR-001-06B`
-opt-in fake-client adapter / extractor 開始，依 revised atomic items 順序實作。
+workflow_step：`Step 6 - Implementation / CR-001-07A`；下一步由 `CR-001-07A`
+single-image CR-001 extraction orchestration 開始，依 revised atomic items 順序實作。
 
 Current DA conclusion：
 
@@ -392,6 +392,10 @@ Implementation progress:
   registry, forbids free-form allele drift / extra raw keys, keeps
   `impression_colors` as optional palette auxiliary output, and remains fixture /
   unittest-only with no API dependency.
+- `CR-001-06B` completed: CR-001 has an opt-in Gemini payload/client/raw
+  extractor seam with injected fake transport in baseline tests. This slice
+  returns raw response text only and does not parse, validate, write native
+  artifacts, or call the real Gemini API in unittest.
 
 Decision candidates already suitable for the revised table：
 

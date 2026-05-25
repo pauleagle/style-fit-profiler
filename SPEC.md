@@ -552,7 +552,7 @@ active work 後，才可進入 implementation 或 atomic decomposition。
 | `EXP-001` Gemini Image Analysis Extractor | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-001-gemini-image-analysis-extractor.md`](specs/backlog/EXP-001-gemini-image-analysis-extractor.md) |
 | `EXP-002` Phase 0 Batch Reference Image Analysis | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-002-phase0-batch-reference-image-analysis.md`](specs/backlog/EXP-002-phase0-batch-reference-image-analysis.md) |
 | `EXP-003` Colab Notebook Wrapper for Phase 0 | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-003-colab-notebook-wrapper-for-phase0.md`](specs/backlog/EXP-003-colab-notebook-wrapper-for-phase0.md) |
-| `CR-001` Appeal Point and Art Style Extraction | Active post-P0 implementation; next cursor `CR-001-06B` | [`specs/backlog/CR-001-appeal-point-and-art-style-extraction.md`](specs/backlog/CR-001-appeal-point-and-art-style-extraction.md) |
+| `CR-001` Appeal Point and Art Style Extraction | Active post-P0 implementation; next cursor `CR-001-07A` | [`specs/backlog/CR-001-appeal-point-and-art-style-extraction.md`](specs/backlog/CR-001-appeal-point-and-art-style-extraction.md) |
 
 ## Testing Implications
 
