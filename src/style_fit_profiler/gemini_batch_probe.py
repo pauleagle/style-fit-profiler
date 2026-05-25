@@ -10,6 +10,8 @@ from pathlib import Path
 import sys
 from typing import Any, Mapping
 
+from .cr001 import CR001GeminiAnalysisClient
+from .cr001_gemini_probe import run_cr001_batch_probe
 from .gemini_image_probe import (
     DEFAULT_BATCH_ANALYSIS_PROMPT,
     DEFAULT_MODEL,
@@ -41,6 +43,9 @@ from .phase0 import (
 DEFAULT_BATCH_RUN_DIR = Path("runs/manual-gemini-batch")
 DEFAULT_BATCH_SIZE = 2
 DEFAULT_BATCH_MAX_ATTEMPTS = DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS
+DEFAULT_BATCH_BACKEND = "cr001"
+LEGACY_BATCH_BACKEND = "legacy"
+CR001_BATCH_BACKEND = "cr001"
 REFERENCE_IMAGE_ANALYSIS_OUTPUT = Path("phase0/reference_image_analysis.json")
 STYLE_GENE_CANDIDATES_OUTPUT = Path("phase0/style_gene_candidates.json")
 BATCH_RUN_REPORT_OUTPUT = Path("phase0/batch_run_report.json")
@@ -174,7 +179,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "  $env:PYTHONPATH = 'src'\n"
             "  $env:GEMINI_API_KEY = '<your key>'\n"
             "  python -m style_fit_profiler.gemini_batch_probe "
-            "--input-dir reference_images --batch-size 2"
+            "--input-dir reference_images --batch-size 2\n"
+            "  python -m style_fit_profiler.gemini_batch_probe "
+            "--backend legacy --input-dir reference_images --batch-size 2"
+        ),
+    )
+    parser.add_argument(
+        "--backend",
+        choices=(CR001_BATCH_BACKEND, LEGACY_BATCH_BACKEND),
+        default=DEFAULT_BATCH_BACKEND,
+        help=(
+            "Batch analysis backend. Defaults to CR-001 native artifacts; "
+            "use legacy for EXP Phase 0 style_gene_candidates output."
         ),
     )
     parser.add_argument(
@@ -231,6 +247,29 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = args.run_dir
     if not run_dir.is_absolute():
         run_dir = project_root / run_dir
+
+    if args.backend == CR001_BATCH_BACKEND:
+        if args.prompt_file is not None:
+            raise GeminiImageProbeError(
+                "--prompt-file is only supported with --backend legacy"
+            )
+        client = CR001GeminiAnalysisClient(
+            api_key=api_key,
+            model=args.model,
+            timeout_seconds=args.timeout_seconds,
+        )
+        result = run_cr001_batch_probe(
+            project_root=project_root,
+            input_dir=args.input_dir,
+            run_dir=run_dir,
+            batch_size=args.batch_size,
+            max_attempts=args.max_attempts,
+            client=client,
+            model=args.model,
+        )
+
+        print(json.dumps(result.to_json_record(), ensure_ascii=False, indent=2))
+        return 1 if result.has_failed_batches else 0
 
     prompt = (
         args.prompt_file.read_text(encoding="utf-8")

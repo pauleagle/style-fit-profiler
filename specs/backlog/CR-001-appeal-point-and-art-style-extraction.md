@@ -416,6 +416,16 @@ Implementation progress:
 
   These entrypoints write CR-001 native outputs only; they do not produce
   `style_gene_candidates.json` compatibility projection outputs.
+- Legacy manual batch entrypoint aligned: the existing command now defaults to
+  the CR-001 native backend:
+
+  ```text
+  python -m style_fit_profiler.gemini_batch_probe
+  ```
+
+  This lets the existing Phase 0 manual batch command act as the new CR-001
+  Phase 0 path. The prior EXP / legacy three-aspect output remains available
+  only through `--backend legacy`.
 
 ## Decision: CR-001 v1 native baseline freeze
 
