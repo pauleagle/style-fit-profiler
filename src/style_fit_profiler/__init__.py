@@ -5,6 +5,12 @@ from .config import (
     ConfigValidationError,
     ReferenceImageAnalysisPolicy,
 )
+from .cr001 import (
+    CR001_ALLELE_REGISTRY,
+    CR001_CANONICAL_LOCI,
+    CR001_CHARACTER_APPEAL_LOCI,
+    CR001_EXPECTED_STYLE_LOCI,
+)
 from .notebook import (
     DEFAULT_COLAB_NOTEBOOK_NAME,
     DEFAULT_COLAB_EXPORT_ZIP_NAME,
@@ -59,6 +65,10 @@ from .phase0 import (
 __all__ = [
     "ALLOWED_REFERENCE_IMAGE_ASPECTS",
     "ConfigValidationError",
+    "CR001_ALLELE_REGISTRY",
+    "CR001_CANONICAL_LOCI",
+    "CR001_CHARACTER_APPEAL_LOCI",
+    "CR001_EXPECTED_STYLE_LOCI",
     "DEFAULT_COLAB_NOTEBOOK_NAME",
     "DEFAULT_COLAB_EXPORT_ZIP_NAME",
     "DEFAULT_COLAB_PROJECT_ROOT",
