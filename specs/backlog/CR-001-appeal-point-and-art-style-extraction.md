@@ -1,7 +1,7 @@
 # CR-001: Appeal Point and Art Style Extraction
 
-狀態：Active Post-P0 Change Request；Phase 0 baseline 已完成並驗證，CR-001 v1
-依 accepted atomic decomposition 逐步實作。
+狀態：CR-001 v1 native baseline accepted / frozen；`CR-001-08` optional projection
+deferred pending projection-policy decision。
 
 來源摘要：
 
@@ -334,11 +334,10 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 
 ## Atomic decomposition preparation draft
 
-Status：`active-implementation`；the revised atomic table below is accepted as
-CR-001 v1 implementation scope.
-workflow_step：`Step 14 - Decision Proposal`；`CR-001-07B` batch integration 已完成
-CR-001 v1 native artifact baseline。`CR-001-08` optional projection 維持 deferred /
-non-primary，需 human 決策後才啟動。
+Status：`baseline-frozen`；CR-001 v1 native artifact baseline is accepted.
+workflow_step：`Step 14 - Decision Proposal` completed；`CR-001-08` optional
+projection remains deferred / non-primary and MUST NOT start until projection
+policy is explicitly decided.
 
 Current DA conclusion：
 
@@ -407,6 +406,61 @@ Implementation progress:
   some images fail, retries failed image scope up to the configured attempt
   budget, records retry metadata / output paths, and does not write
   `style_gene_pool.json`.
+
+## Decision: CR-001 v1 native baseline freeze
+
+Decision：Accepted.
+
+CR-001 v1 is accepted as a native baseline. The primary output of CR-001 is:
+
+```text
+phase0/cr001_reference_image_analysis.json
+```
+
+This artifact preserves the richer CR-001-native structure, including expected
+style genes, character appeal genes, optional impression colors, summaries, and
+source traceability.
+
+`CR-001-08` is deferred.
+
+Reason：`CR-001-08` would introduce a lossy compatibility projection from
+CR-001 native records into the legacy Phase 0 candidate gene format. This
+projection requires an explicit policy for mapping CR-001 loci into the legacy
+Phase 0 aspects:
+
+- `rendering`
+- `color_light`
+- `texture_artifacts`
+
+Until that policy is decided, CR-001 native artifacts must not be projected into
+`style_gene_candidates.json`-like outputs, and must not be merged into
+`style_gene_pool.json`.
+
+### Deferred question before CR-001-08
+
+Before starting `CR-001-08`, decide which CR-001 loci are eligible for
+projection.
+
+Likely safe:
+
+- `genre` -> `rendering`
+- `line_art` -> `rendering`
+- `brush_shading` -> `rendering`
+- `saturation` -> `color_light`
+- `lighting` -> `color_light`
+- `impression_colors` -> `color_light`
+- `texture` -> `texture_artifacts`
+
+Needs caution:
+
+- `facial_features`
+- `body_type`
+- `clothing_genre`
+- `clothing_fit`
+- `character_appeal_genes`
+
+These may represent character appeal / phenotype rather than legacy Phase 0
+style genes.
 
 Decision candidates already suitable for the revised table：
 
