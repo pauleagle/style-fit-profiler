@@ -406,6 +406,16 @@ Implementation progress:
   some images fail, retries failed image scope up to the configured attempt
   budget, records retry metadata / output paths, and does not write
   `style_gene_pool.json`.
+- Manual CR-001 probe entrypoints completed: opt-in real Gemini manual test
+  paths now exist for single-image and batch native artifact generation:
+
+  ```text
+  python -m style_fit_profiler.cr001_gemini_probe single <image>
+  python -m style_fit_profiler.cr001_gemini_probe batch --input-dir reference_images
+  ```
+
+  These entrypoints write CR-001 native outputs only; they do not produce
+  `style_gene_candidates.json` compatibility projection outputs.
 
 ## Decision: CR-001 v1 native baseline freeze
 
