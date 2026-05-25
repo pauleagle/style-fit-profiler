@@ -78,9 +78,9 @@ Expected JSON shape（with optional `impression_colors` example）：
       "clothing_fit": { "selected": ["pleated-silhouette"], "intensity": [0.8] }
     },
     "impression_colors": {
-      "main": "#88c8ff",
-      "secondary": "#f8b0d0",
-      "accent": "#fff2a8"
+      "main": "#88C8FF",
+      "secondary": "#F8B0D0",
+      "accent": "#FFF2A8"
     }
   },
   "cr001_summary": "short combined style and appeal summary"
@@ -133,8 +133,8 @@ Candidate extended loci（`CR-001A+` deferred by default）：
   `split-complementary`、`warm-dominant`、`cool-dominant`、`high-value-contrast`、
   `low-contrast-foggy`、`dual-tone`、`rainbow-spectrum`。
 - `impression_colors`：結構化印象色 palette，包含 `main`、`secondary`、`accent`
-  三個 hex color strings，格式為 `#RRGGBB`；此欄位描述整體主色、輔色與點綴色，
-  不使用 `selected` / `intensity` allele 形式。
+  三個 hex color strings，canonical output 格式為 uppercase `#RRGGBB`；此欄位描述
+  整體主色、輔色與點綴色，不使用 `selected` / `intensity` allele 形式。
 - `hair_style`：`long-flowing`、`short-bob`、`twin-tail`、`ponytail`、
   `messy-hair`、`ahoge`、`braided`、`curly-hair`、`straight-hair`、`wolf-cut`、
   `hime-cut`。
@@ -162,7 +162,7 @@ Extended loci policy：
 - 所有 CR-001 loci 使用 `selected` / `intensity` allele schema；唯一例外是
   `impression_colors`，它是 palette auxiliary output，而非 allele locus。
 - `impression_colors` 不得放入 `CR001_ALLELE_REGISTRY`；若啟用，必須驗證三個
-  channel 皆存在且為 canonical hex color string。
+  channel 皆存在且可正規化為 canonical uppercase hex color string。
 
 Schema / validation expectations：
 
@@ -173,7 +173,9 @@ Schema / validation expectations：
 - 每個 canonical locus 初版應選 1 到 4 個 alleles；若未來要允許空值，需先定義
   explicit unknown / not-applicable policy。
 - `impression_colors` 若出現，必須只包含 `main`、`secondary`、`accent`，每個值必須是
-  `#RRGGBB` hex color string；不得使用自由文字 color names 取代。
+  可正規化為 uppercase `#RRGGBB` 的 hex color string；若 LLM raw response 回傳
+  lowercase hex，parser / validator 必須自動轉成 uppercase canonical output，不得使用
+  自由文字 color names 取代。
 - Output 不可包含未知 top-level key、未知 locus key 或 registry 外的 allele。
 - Summary 不得取代 structured fields；structured fields 才是後續 recombination、
   mutation、fitness scoring 與 audit 的來源。
@@ -201,7 +203,7 @@ Validation requirements：
   unknown allele、non-list `selected`、non-list `intensity`、長度不一致、非數字 intensity
   與 out-of-range intensity。
 - Parser tests 覆蓋 `impression_colors` 的 missing channel、unknown channel、
-  invalid hex string 與 non-string value。
+  lowercase-to-uppercase normalization、invalid hex string 與 non-string value。
 - Mapper tests 覆蓋 source image traceability、stable normalized gene IDs、duplicate
   allele handling、summary preservation 與 no gene pool overwrite。
 - Extractor tests 使用 fake Gemini / fake vision client，確認 input 來自 reference
@@ -242,7 +244,8 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
   palette schema 驗證，不放入 `CR001_ALLELE_REGISTRY`。
 - Decision：已確認。所有 CR-001 loci 使用 `selected` / `intensity` allele schema；
   唯一例外是 `impression_colors`，其 schema 為 `main`、`secondary`、`accent`
-  三個 `#RRGGBB` hex color strings。
+  三個 uppercase `#RRGGBB` hex color strings；若 LLM raw response 回傳 lowercase
+  hex，必須正規化為 uppercase canonical output。
 - Status：`resolved-by-spec-change`。
 
 ## DA-CR-001-003: Canonical, extended, and palette enablement order is unclear
@@ -371,7 +374,7 @@ Recommended revised atomic items：
 | `CR-001-00` | Acceptance scaffold | CR-001 v1 fixture set and test namespace | SDD/TDD anchor, no implementation behavior yet |
 | `CR-001-01` | Canonical allele registry | `CR001_ALLELE_REGISTRY` for 10 loci | no unknown locus, no custom allele, `impression_colors` excluded |
 | `CR-001-02` | In-memory CR-001 schema validator | validator for required record shape and `selected` / `intensity` loci | required loci, 1-4 selected alleles, matched intensity length, intensity range, summary presence |
-| `CR-001-03` | Palette auxiliary validator | optional `impression_colors` validator | exact `main` / `secondary` / `accent`, `#RRGGBB`, optional but validated |
+| `CR-001-03` | Palette auxiliary validator | optional `impression_colors` validator | exact `main` / `secondary` / `accent`, uppercase `#RRGGBB`, lowercase raw normalized, optional but validated |
 | `CR-001-04` | Raw response parser / valid-raw gate | raw JSON -> validation result and valid CR-001 record | malformed JSON, unknown key, schema mismatch, source traceability; no file write |
 | `CR-001-05A` | Native artifact document builder | CR-001 native artifact document shape | schema version, source image linkage, summary preservation, no Phase 0 projection |
 | `CR-001-05B` | Native artifact writer | write CR-001 native artifact under `phase0/` | stable output path, deterministic JSON, no overwrite of `style_gene_pool.json` |
@@ -389,17 +392,160 @@ Decision candidates already suitable for the revised table：
   belongs to extraction reliability if introduced later，`fitness_score` stays outside
   CR-001 parsing.
 - Native artifact candidate path：`phase0/cr001_reference_image_analysis.json`。
-- `impression_colors` producer：v1 accepts LLM-provided optional palette only；image
-  palette extraction / cross-check can be split to `CR-001A+` or EXP.
-- Gene pool merge：CR-001 native output may inform review, but merge to active
-  `style_gene_pool.json` must remain a separate human-reviewed step.
+- `impression_colors` producer：use hybrid validation. LLM semantic judgment is
+  the primary source for perceived / narrative / emotional color impressions,
+  while image palette extraction provides objective visual evidence and
+  validation.
+- `impression_colors` hex normalization：canonical artifact 固定輸出 uppercase
+  `#RRGGBB`；LLM raw response 若回傳 lowercase hex，parser / validator 自動正規化
+  為 uppercase。
+  Rationale（ChatGPT 補充）：
+  - 視覺辨識較清楚：uppercase `#A0B4FF` 比 lowercase `#a0b4ff` 更容易快速辨識為色碼。
+  - 常見於設計規格與色票文件：design token、style guide、Adobe / Figma 匯出文件常偏向
+    uppercase hex。
+  - 避免混用造成 diff 雜訊：固定格式讓 Git diff、JSON 比對與 schema validation 更乾淨。
+- Gene pool merge：human-reviewed merge required. CR-001 / Phase 0 outputs may
+  inform review and proposed candidate genes, but merge to active
+  `style_gene_pool.json` must remain a separate human-reviewed step before
+  Phase 1 use.
+
+### Native artifact schema version
+
+Decision: Accepted.
+
+CR-001 native artifact MUST include a top-level `schema_version` field. For
+CR-001 v1, the value MUST be:
+
+```json
+"schema_version": "cr001.v1"
+```
+
+This field identifies the schema contract of the CR-001 native artifact
+container. It describes the artifact container, not a single analysis result,
+the allele registry, or any downstream projection.
+
+Scope:
+
+- Applies to `phase0/cr001_reference_image_analysis.json`.
+- Produced by `CR-001-05A`.
+- Written by `CR-001-05B`.
+
+It MUST appear only at the top level of the CR-001 native artifact file. It MUST
+NOT be placed inside:
+
+- LLM raw response.
+- `appeal_point_and_art_style`.
+- `CR001_ALLELE_REGISTRY`.
+- `style_gene_candidates.json` downstream projection.
+- `style_gene_pool.json` finalized gene pool artifact.
+
+Example:
+
+```json
+{
+  "schema_version": "cr001.v1",
+  "source": "cr001_reference_image_analysis",
+  "records": [
+    {
+      "source_image": "reference_images/ref-001.png",
+      "appeal_point_and_art_style": {},
+      "cr001_summary": "..."
+    }
+  ]
+}
+```
+
+### Native artifact builder / writer split
+
+Decision: Accepted.
+
+`CR-001-05A` and `CR-001-05B` are fixed as separate atomic items for CR-001 v1.
+They MUST NOT be merged during v1 atomic decomposition.
+
+`CR-001-05A` is the native artifact document builder. It owns the in-memory
+CR-001 native artifact document shape, including top-level `schema_version`,
+`source`, `records`, source image linkage, `appeal_point_and_art_style`, and
+`cr001_summary`. It must not write files and must not produce Phase 0 projection
+artifacts.
+
+`CR-001-05B` is the native artifact writer. It owns filesystem output for the
+already-built CR-001 native artifact, including `phase0/` directory creation,
+the stable `phase0/cr001_reference_image_analysis.json` output path,
+deterministic JSON formatting, and the no-overwrite rule for
+`style_gene_pool.json`.
+
+Rationale:
+
+- Builder tests can validate document shape without filesystem side effects.
+- Writer tests can focus on path, formatting, directory creation, and overwrite
+  safety.
+- Keeping data-contract errors separate from I/O errors reduces review and
+  mutation-test ambiguity for the first CR-001 native artifact implementation.
+
+### Impression colors producer policy
+
+Decision: Hybrid validation.
+
+`impression_colors` represents the perceived visual identity colors of the
+reference image. It SHOULD be produced from LLM semantic judgment, with image
+palette extraction used as evidence and validation.
+
+LLM semantic judgment determines which colors are meaningful as character,
+style, narrative, or emotional impressions. Image palette extraction provides
+objective evidence for colors that are visually present in the source image.
+The final `impression_colors` SHOULD prefer colors that are semantically
+meaningful, visually supported, and useful for downstream style gene generation.
+
+Palette extraction alone MUST NOT decide `impression_colors`, because dominant
+image colors may come from background, lighting, shadows, or non-character
+areas. In that case the result would be closer to `dominant_palette` or
+`extracted_palette`, not impression colors.
+
+LLM judgment alone SHOULD NOT be trusted without palette evidence, unless the
+color is clearly tied to a visible semantic feature such as hair, eyes, outfit,
+accessory, or atmosphere.
+
+For CR-001 v1, this policy does not change the canonical `impression_colors`
+output shape. The native artifact still stores the optional palette auxiliary
+output as `main`, `secondary`, and `accent` uppercase hex strings. Richer
+evidence metadata such as color name, role, source, or confidence may be added
+later as validation evidence, `CR-001A+`, or EXP work, but is not required in
+the v1 `impression_colors` object.
+
+### Phase 1 active gene pool merge policy
+
+Decision: Human-reviewed merge required.
+
+CR-001 / Phase 0 outputs may produce native analysis artifacts and proposed
+candidate genes, but Gemini broad traits MUST NOT be merged directly into the
+active `style_gene_pool.json`.
+
+The bridge from CR-001 / Phase 0 to Phase 1 is:
+
+```text
+reference images
+  -> CR-001 / Phase 0 analysis
+  -> phase0/cr001_reference_image_analysis.json
+  -> optional projection / proposed candidate genes
+  -> human review / edit / approve
+  -> explicit merge into style_gene_pool.json
+  -> Phase 1 uses active gene pool
+```
+
+Gemini broad traits may only enter the Phase 1 active gene pool after human
+review, editing, deduplication, naming normalization, and explicit approval.
+They are observations or candidate visual genes, not automatically accepted
+active genes.
+
+This policy preserves `style_gene_pool.json` as the active Phase 1 contract and
+keeps CR-001 native artifact output separate from the governed merge step.
+
+Non-scope:
+
+- Automatic merge from CR-001 native artifact to `style_gene_pool.json`.
+- Treating `phase0/cr001_reference_image_analysis.json` as the active gene pool.
+- Overwriting `style_gene_pool.json` from Gemini / CR-001 extraction output.
 
 Open questions before accepting revised atomic decomposition：
 
-- `impression_colors` hex 是否必須 canonical uppercase `#RRGGBB`，或接受 lowercase
-  後 normalize？
-- Native artifact schema version 欄位命名是否接受 `schema_version: "cr001.v1"`？
-- `CR-001-05A` / `CR-001-05B` 是否固定拆成 builder 與 writer，或允許在決策收斂後
-  合併成單一 item？
-- `impression_colors` 應由 LLM 判定、影像 palette extraction，還是兩者交叉驗證產生？
-- Gemini broad traits 是否必須先經 human review，才可合併到 active gene pool？
+- None. All prior open questions have accepted decisions above.
