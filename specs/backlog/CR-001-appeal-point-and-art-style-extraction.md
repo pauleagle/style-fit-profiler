@@ -336,8 +336,9 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 
 Status：`active-implementation`；the revised atomic table below is accepted as
 CR-001 v1 implementation scope.
-workflow_step：`Step 6 - Implementation / CR-001-07B`；下一步由 `CR-001-07B`
-batch integration 開始，依 revised atomic items 順序實作。
+workflow_step：`Step 14 - Decision Proposal`；`CR-001-07B` batch integration 已完成
+CR-001 v1 native artifact baseline。`CR-001-08` optional projection 維持 deferred /
+non-primary，需 human 決策後才啟動。
 
 Current DA conclusion：
 
@@ -400,6 +401,12 @@ Implementation progress:
   record through raw extraction and the valid-raw parser, preserves raw response
   text, enforces source-image traceability, and keeps invalid raw isolated from
   native records without file writes or batch behavior.
+- `CR-001-07B` completed: batch integration writes
+  `phase0/cr001_reference_image_analysis.json` and
+  `phase0/cr001_batch_run_report.json`, preserves partial valid records when
+  some images fail, retries failed image scope up to the configured attempt
+  budget, records retry metadata / output paths, and does not write
+  `style_gene_pool.json`.
 
 Decision candidates already suitable for the revised table：
 

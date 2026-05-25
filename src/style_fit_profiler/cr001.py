@@ -17,6 +17,7 @@ from .gemini_image_probe import (
     extract_response_text,
     read_inline_image_part,
 )
+from .phase0 import plan_phase0_batches
 
 
 CR001_EXPECTED_STYLE_LOCI = (
@@ -39,6 +40,8 @@ CR001_HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 CR001_NATIVE_ARTIFACT_SCHEMA_VERSION = "cr001.v1"
 CR001_NATIVE_ARTIFACT_SOURCE = "cr001_reference_image_analysis"
 CR001_NATIVE_ARTIFACT_PATH = "phase0/cr001_reference_image_analysis.json"
+CR001_BATCH_RUN_REPORT_PATH = "phase0/cr001_batch_run_report.json"
+CR001_BATCH_RUN_REPORT_SOURCE = "cr001_batch_reference_image_analysis"
 
 CR001_ALLELE_REGISTRY = {
     "genre": (
@@ -167,6 +170,19 @@ class CR001SingleImageExtractionResult:
     model: str | None = None
     record: dict[str, Any] | None = None
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class CR001BatchExtractionResult:
+    """File outputs and status summary for CR-001 batch extraction."""
+
+    native_artifact_path: str
+    batch_run_report_path: str
+    summary: Mapping[str, Any]
+
+    @property
+    def has_failed_batches(self) -> bool:
+        return int(self.summary.get("failed_batches", 0)) > 0
 
 
 @dataclass(frozen=True)
@@ -327,6 +343,120 @@ def extract_cr001_single_image_record(
         raw_response_text=raw_analysis.response_text,
         model=raw_analysis.model,
         record=parse_result.record,
+    )
+
+
+def run_cr001_batch_extraction(
+    *,
+    reference_image_manifest_records: Sequence[Mapping[str, Any]],
+    run_dir: Path,
+    raw_extractor: Callable[..., Sequence[CR001GeminiRawAnalysis]],
+    batch_size: int,
+    max_attempts: int,
+) -> CR001BatchExtractionResult:
+    """Run CR-001 extraction in batches and write native artifact plus report."""
+
+    if type(max_attempts) is not int or max_attempts < 1:
+        raise CR001ValidationError("CR-001 batch max_attempts must be a positive integer")
+
+    batches = plan_phase0_batches(
+        reference_image_manifest_records=reference_image_manifest_records,
+        batch_size=batch_size,
+    )
+    valid_records_by_source: dict[str, dict[str, Any]] = {}
+    batch_report_records: list[dict[str, Any]] = []
+    image_report_by_source: dict[str, dict[str, Any]] = {}
+
+    for batch in batches:
+        remaining_records = list(batch.records)
+        failed_errors_by_source: dict[str, str] = {}
+        attempt_count = 0
+
+        for attempt_index in range(1, max_attempts + 1):
+            if not remaining_records:
+                break
+            attempt_count = attempt_index
+            attempt_results = _run_cr001_batch_attempt(
+                records=remaining_records,
+                raw_extractor=raw_extractor,
+            )
+            remaining_records = []
+            failed_errors_by_source = {}
+
+            for result in attempt_results:
+                image_report_by_source[result.source_image] = _cr001_image_report_record(
+                    result=result,
+                    batch_index=batch.index,
+                    attempt_index=attempt_index,
+                )
+                if result.valid:
+                    valid_records_by_source[result.source_image] = result.record
+                    continue
+                failed_errors_by_source[result.source_image] = result.error or "unknown error"
+                if result.source_image in batch.input_paths:
+                    remaining_records.append(
+                        _find_manifest_record_by_source(
+                            batch.records,
+                            result.source_image,
+                        )
+                    )
+
+        failed_image_paths = [
+            source_image
+            for source_image in batch.input_paths
+            if source_image not in valid_records_by_source
+        ]
+        status = "failed" if failed_image_paths else "completed"
+        batch_has_valid_output = any(
+            source_image in valid_records_by_source
+            for source_image in batch.input_paths
+        )
+        batch_report_records.append(
+            {
+                "batch_index": batch.index,
+                "input_paths": list(batch.input_paths),
+                "status": status,
+                "error": _format_cr001_batch_error(
+                    failed_image_paths=failed_image_paths,
+                    failed_errors_by_source=failed_errors_by_source,
+                ),
+                "output_paths": [CR001_NATIVE_ARTIFACT_PATH] if batch_has_valid_output else [],
+                "retryable": status == "failed",
+                "attempt_count": attempt_count,
+                "max_attempts": max_attempts,
+                "remaining_attempts": max_attempts - attempt_count,
+                "retry_exhausted": status == "failed" and attempt_count >= max_attempts,
+                "next_retry_scope": "failed_images" if status == "failed" else None,
+                "failed_image_paths": failed_image_paths,
+            }
+        )
+
+    artifact = build_cr001_native_artifact_document(
+        [
+            valid_records_by_source[source_image]
+            for source_image in sorted(valid_records_by_source)
+        ]
+    )
+    native_artifact_path = write_cr001_native_artifact_document(
+        run_dir=run_dir,
+        artifact_document=artifact,
+    )
+    batch_run_report = _build_cr001_batch_run_report(
+        batch_records=batch_report_records,
+        image_records=[
+            image_report_by_source[source_image]
+            for source_image in sorted(image_report_by_source)
+        ],
+    )
+    batch_run_report_path = _write_cr001_run_relative_json(
+        run_dir=run_dir,
+        relative_path=CR001_BATCH_RUN_REPORT_PATH,
+        document=batch_run_report,
+    )
+    return CR001BatchExtractionResult(
+        native_artifact_path=native_artifact_path,
+        batch_run_report_path=batch_run_report_path,
+        summary=batch_run_report["summary"],
     )
 
 
@@ -708,6 +838,169 @@ def _manifest_record_source_image(record: Mapping[str, Any]) -> str:
     if source_image_error is not None:
         raise CR001ValidationError(source_image_error)
     return source_image
+
+
+def _run_cr001_batch_attempt(
+    *,
+    records: Sequence[Mapping[str, Any]],
+    raw_extractor: Callable[..., Sequence[CR001GeminiRawAnalysis]],
+) -> tuple[CR001SingleImageExtractionResult, ...]:
+    source_images = tuple(_manifest_record_source_image(record) for record in records)
+    raw_analyses = tuple(raw_extractor(tuple(records)))
+    raw_by_source: dict[str, CR001GeminiRawAnalysis] = {}
+    results: list[CR001SingleImageExtractionResult] = []
+
+    for raw_analysis in raw_analyses:
+        if raw_analysis.source_image not in source_images:
+            results.append(
+                CR001SingleImageExtractionResult(
+                    valid=False,
+                    source_image=raw_analysis.source_image,
+                    raw_response_text=raw_analysis.response_text,
+                    model=raw_analysis.model,
+                    error=(
+                        "CR-001 batch extraction unexpected source_image: "
+                        f"{raw_analysis.source_image}"
+                    ),
+                )
+            )
+            continue
+        if raw_analysis.source_image in raw_by_source:
+            results.append(
+                CR001SingleImageExtractionResult(
+                    valid=False,
+                    source_image=raw_analysis.source_image,
+                    raw_response_text=raw_analysis.response_text,
+                    model=raw_analysis.model,
+                    error=(
+                        "CR-001 batch extraction duplicate source_image: "
+                        f"{raw_analysis.source_image}"
+                    ),
+                )
+            )
+            continue
+        raw_by_source[raw_analysis.source_image] = raw_analysis
+
+    for source_image in source_images:
+        raw_analysis = raw_by_source.get(source_image)
+        if raw_analysis is None:
+            results.append(
+                CR001SingleImageExtractionResult(
+                    valid=False,
+                    source_image=source_image,
+                    error="CR-001 batch extraction missing raw analysis",
+                )
+            )
+            continue
+
+        parse_result = parse_cr001_raw_response(
+            raw_response=raw_analysis.response_text,
+            source_image=source_image,
+        )
+        if not parse_result.valid:
+            results.append(
+                CR001SingleImageExtractionResult(
+                    valid=False,
+                    source_image=source_image,
+                    raw_response_text=raw_analysis.response_text,
+                    model=raw_analysis.model,
+                    error=parse_result.error,
+                )
+            )
+            continue
+
+        results.append(
+            CR001SingleImageExtractionResult(
+                valid=True,
+                source_image=source_image,
+                raw_response_text=raw_analysis.response_text,
+                model=raw_analysis.model,
+                record=parse_result.record,
+            )
+        )
+
+    return tuple(results)
+
+
+def _find_manifest_record_by_source(
+    records: Sequence[Mapping[str, Any]],
+    source_image: str,
+) -> Mapping[str, Any]:
+    for record in records:
+        if _manifest_record_source_image(record) == source_image:
+            return record
+    raise CR001ValidationError(f"CR-001 batch source image is not in batch: {source_image}")
+
+
+def _cr001_image_report_record(
+    *,
+    result: CR001SingleImageExtractionResult,
+    batch_index: int,
+    attempt_index: int,
+) -> dict[str, Any]:
+    return {
+        "path": result.source_image,
+        "batch_index": batch_index,
+        "attempt_index": attempt_index,
+        "analysis_status": "completed" if result.valid else "failed",
+        "model": result.model,
+        "error": result.error,
+    }
+
+
+def _format_cr001_batch_error(
+    *,
+    failed_image_paths: Sequence[str],
+    failed_errors_by_source: Mapping[str, str],
+) -> str | None:
+    if not failed_image_paths:
+        return None
+    failed_scopes = [
+        f"{source_image}: {failed_errors_by_source.get(source_image, 'unknown error')}"
+        for source_image in failed_image_paths
+    ]
+    return "; ".join(failed_scopes)
+
+
+def _build_cr001_batch_run_report(
+    *,
+    batch_records: Sequence[Mapping[str, Any]],
+    image_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    retryable_batch_indexes = [
+        batch_record["batch_index"]
+        for batch_record in batch_records
+        if batch_record["retryable"]
+    ]
+    return {
+        "schema_version": CR001_NATIVE_ARTIFACT_SCHEMA_VERSION,
+        "source": CR001_BATCH_RUN_REPORT_SOURCE,
+        "summary": {
+            "total_batches": len(batch_records),
+            "completed_batches": sum(
+                1 for batch_record in batch_records if batch_record["status"] == "completed"
+            ),
+            "failed_batches": len(retryable_batch_indexes),
+            "retryable_batch_indexes": retryable_batch_indexes,
+        },
+        "batches": [dict(batch_record) for batch_record in batch_records],
+        "images": [dict(image_record) for image_record in image_records],
+    }
+
+
+def _write_cr001_run_relative_json(
+    *,
+    run_dir: Path,
+    relative_path: str,
+    document: Mapping[str, Any],
+) -> str:
+    output_path = run_dir / relative_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(document, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return output_path.relative_to(run_dir).as_posix()
 
 
 def _format_cr001_prompt_registry() -> str:
