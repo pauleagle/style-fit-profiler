@@ -1,0 +1,101 @@
+{
+  "schema_version": "cr001.v1",
+  "source": "cr001_reference_image_analysis",
+  "records": [
+    {
+      "source_image": "reference_images/ref-001.png",
+      "appeal_point_and_art_style": {
+        "expected_style_genes": {
+          "genre": {
+            "selected": [
+              "cel-shading"
+            ],
+            "intensity": [
+              0.9
+            ]
+          },
+          "line_art": {
+            "selected": [
+              "clean-line-art"
+            ],
+            "intensity": [
+              0.8
+            ]
+          },
+          "brush_shading": {
+            "selected": [
+              "smooth-airbrush"
+            ],
+            "intensity": [
+              0.8
+            ]
+          },
+          "saturation": {
+            "selected": [
+              "vibrant-high-saturation"
+            ],
+            "intensity": [
+              0.7
+            ]
+          },
+          "lighting": {
+            "selected": [
+              "bright-ambient"
+            ],
+            "intensity": [
+              0.8
+            ]
+          },
+          "texture": {
+            "selected": [
+              "clean-digital-canvas"
+            ],
+            "intensity": [
+              0.9
+            ]
+          }
+        },
+        "character_appeal_genes": {
+          "facial_features": {
+            "selected": [
+              "large-expressive-eyes"
+            ],
+            "intensity": [
+              0.9
+            ]
+          },
+          "body_type": {
+            "selected": [
+              "slender-build"
+            ],
+            "intensity": [
+              0.8
+            ]
+          },
+          "clothing_genre": {
+            "selected": [
+              "japanese-school-uniform"
+            ],
+            "intensity": [
+              0.9
+            ]
+          },
+          "clothing_fit": {
+            "selected": [
+              "pleated-silhouette"
+            ],
+            "intensity": [
+              0.8
+            ]
+          }
+        },
+        "impression_colors": {
+          "main": "#88C8FF",
+          "secondary": "#F8B0D0",
+          "accent": "#FFF2A8"
+        }
+      },
+      "cr001_summary": "bright cel-shaded anime character with expressive eyes and a clean digital finish"
+    }
+  ]
+}

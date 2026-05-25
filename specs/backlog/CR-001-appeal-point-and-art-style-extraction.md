@@ -333,10 +333,10 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 
 ## Atomic decomposition preparation draft
 
-Status：`da-reviewed`；current draft is directionally valid but not yet accepted
-implementation scope.
-workflow_step：`Step 4.5 - Atomic Decomposition Review`；下一步仍是修成
-accepted atomic decomposition table，才可進入 `Step 5 - Spec-Based Test Design`。
+Status：`accepted-atomic-decomposition`；the revised atomic table below is accepted
+as CR-001 v1 implementation scope.
+workflow_step：`Step 5 - Spec-Based Test Design`；下一步由 `CR-001-00`
+acceptance scaffold 開始，依 revised atomic items 順序實作。
 
 Current DA conclusion：
 
