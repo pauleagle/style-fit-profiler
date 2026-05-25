@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import copy
 from dataclasses import dataclass
 import json
 from pathlib import PurePosixPath, PureWindowsPath
@@ -27,6 +28,8 @@ CR001_CHARACTER_APPEAL_LOCI = (
 CR001_CANONICAL_LOCI = CR001_EXPECTED_STYLE_LOCI + CR001_CHARACTER_APPEAL_LOCI
 CR001_IMPRESSION_COLOR_CHANNELS = ("main", "secondary", "accent")
 CR001_HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
+CR001_NATIVE_ARTIFACT_SCHEMA_VERSION = "cr001.v1"
+CR001_NATIVE_ARTIFACT_SOURCE = "cr001_reference_image_analysis"
 
 CR001_ALLELE_REGISTRY = {
     "genre": (
@@ -189,6 +192,35 @@ def parse_cr001_raw_response(*, raw_response: str, source_image: str) -> CR001Ra
 
     _normalize_record_palette(record)
     return CR001RawParseResult(valid=True, source_image=source_image, record=record)
+
+
+def build_cr001_native_artifact_document(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Build the CR-001 native artifact container without filesystem side effects."""
+
+    if isinstance(records, str) or not isinstance(records, Sequence):
+        raise CR001ValidationError("CR-001 native artifact records must be a list")
+
+    artifact_records: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, Mapping):
+            raise CR001ValidationError("CR-001 native artifact record must be an object")
+        source_image = record.get("source_image")
+        source_image_error = _source_image_error(source_image)
+        if source_image_error is not None:
+            raise CR001ValidationError(source_image_error)
+
+        validate_cr001_record(record)
+        artifact_record = copy.deepcopy(dict(record))
+        _normalize_record_palette(artifact_record)
+        artifact_records.append(artifact_record)
+
+    return {
+        "schema_version": CR001_NATIVE_ARTIFACT_SCHEMA_VERSION,
+        "source": CR001_NATIVE_ARTIFACT_SOURCE,
+        "records": artifact_records,
+    }
 
 
 def validate_cr001_record(record: Mapping[str, Any]) -> None:
