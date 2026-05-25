@@ -1,6 +1,7 @@
 # CR-001: Appeal Point and Art Style Extraction
 
-狀態：Backlog / Post-P0 Change Request，限 Phase 0 baseline 完成並驗證後再拆分實作。
+狀態：Active Post-P0 Change Request；Phase 0 baseline 已完成並驗證，CR-001 v1
+依 accepted atomic decomposition 逐步實作。
 
 來源摘要：
 
@@ -333,10 +334,10 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 
 ## Atomic decomposition preparation draft
 
-Status：`accepted-atomic-decomposition`；the revised atomic table below is accepted
-as CR-001 v1 implementation scope.
-workflow_step：`Step 5 - Spec-Based Test Design`；下一步由 `CR-001-06A`
-Gemini prompt contract 開始，依 revised atomic items 順序實作。
+Status：`active-implementation`；the revised atomic table below is accepted as
+CR-001 v1 implementation scope.
+workflow_step：`Step 6 - Implementation / CR-001-06B`；下一步由 `CR-001-06B`
+opt-in fake-client adapter / extractor 開始，依 revised atomic items 順序實作。
 
 Current DA conclusion：
 
@@ -383,6 +384,14 @@ Recommended revised atomic items：
 | `CR-001-07A` | Single-image CR-001 extraction orchestration | manifest record -> raw -> valid raw -> native record | valid raw isolation, source traceability, no batch complexity |
 | `CR-001-07B` | Batch integration | partial success/failure CR-001 batch report | failed scope, retry metadata, configured attempt budget, output paths |
 | `CR-001-08` | Optional projection | projection from CR-001 native artifact to Phase 0 candidates | deferred / non-primary, no gene pool overwrite |
+
+Implementation progress:
+
+- `CR-001-00` through `CR-001-05B` completed in prior commits.
+- `CR-001-06A` completed: Gemini prompt contract is generated from the canonical
+  registry, forbids free-form allele drift / extra raw keys, keeps
+  `impression_colors` as optional palette auxiliary output, and remains fixture /
+  unittest-only with no API dependency.
 
 Decision candidates already suitable for the revised table：
 

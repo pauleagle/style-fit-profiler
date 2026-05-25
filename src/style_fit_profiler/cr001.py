@@ -140,6 +140,73 @@ class CR001RawParseResult:
     error: str | None = None
 
 
+def build_cr001_gemini_prompt(source_image_label: str | None = None) -> str:
+    """Build the CR-001 v1 restricted-allele Gemini prompt contract."""
+
+    registry_lines = _format_cr001_prompt_registry()
+    source_context = ""
+    if source_image_label is not None:
+        source_context = f"\nSource image label for human review: {source_image_label}\n"
+
+    example_expected_style_genes = _format_cr001_prompt_locus_examples(
+        CR001_EXPECTED_STYLE_LOCI
+    )
+    example_character_appeal_genes = _format_cr001_prompt_locus_examples(
+        CR001_CHARACTER_APPEAL_LOCI
+    )
+
+    return f"""You are a Visual Style & Appeal Point Encoder for CR-001 v1.
+The caller will attach exactly one reference image. Analyze only that image.
+{source_context}
+Return JSON only. Do not wrap it in markdown.
+Do not include source_image.
+Do not include schema_version.
+Do not include comments, confidence, fitness_score, or any extra keys.
+
+Top-level JSON keys:
+- "appeal_point_and_art_style"
+- "cr001_summary"
+
+Required payload groups:
+- "expected_style_genes": loci {", ".join(CR001_EXPECTED_STYLE_LOCI)}
+- "character_appeal_genes": loci {", ".join(CR001_CHARACTER_APPEAL_LOCI)}
+
+For every required locus, return exactly this shape:
+{{ "selected": ["one-to-four-allowed-alleles"], "intensity": [0.0-to-1.0] }}
+
+Rules:
+- Do not invent allele names, synonyms, aliases, or free-form labels.
+- Select 1 to 4 alleles per locus from the allowed registry only.
+- Keep intensity length equal to selected length.
+- Use numeric intensity values between 0.0 and 1.0.
+- "impression_colors" is optional. If present, it is a palette auxiliary object,
+  not a selected/intensity allele locus.
+- Optional "impression_colors" must contain only "main", "secondary", and
+  "accent" as uppercase #RRGGBB strings.
+- Keep "cr001_summary" short and do not use it instead of structured genes.
+
+Allowed allele registry:
+{registry_lines}
+
+Output shape:
+{{
+  "appeal_point_and_art_style": {{
+    "expected_style_genes": {{
+{example_expected_style_genes}
+    }},
+    "character_appeal_genes": {{
+{example_character_appeal_genes}
+    }},
+    "impression_colors": {{
+      "main": "#88C8FF",
+      "secondary": "#F8B0D0",
+      "accent": "#FFF2A8"
+    }}
+  }},
+  "cr001_summary": "short combined style and appeal summary"
+}}"""
+
+
 def parse_cr001_raw_response(*, raw_response: str, source_image: str) -> CR001RawParseResult:
     """Parse raw CR-001 JSON text into a validated source-linked record."""
 
@@ -440,3 +507,23 @@ def _source_image_error(source_image: str) -> str | None:
         return "CR-001 source_image must be a non-empty relative path"
 
     return None
+
+
+def _format_cr001_prompt_registry() -> str:
+    lines: list[str] = []
+    for locus, alleles in CR001_ALLELE_REGISTRY.items():
+        quoted_alleles = ", ".join(f'"{allele}"' for allele in alleles)
+        lines.append(f'- "{locus}": [{quoted_alleles}]')
+    return "\n".join(lines)
+
+
+def _format_cr001_prompt_locus_examples(loci: tuple[str, ...]) -> str:
+    lines: list[str] = []
+    for index, locus in enumerate(loci):
+        first_allele = CR001_ALLELE_REGISTRY[locus][0]
+        suffix = "," if index < len(loci) - 1 else ""
+        lines.append(
+            f'      "{locus}": {{ "selected": ["{first_allele}"], '
+            f'"intensity": [0.8] }}{suffix}'
+        )
+    return "\n".join(lines)
