@@ -158,6 +158,18 @@ class CR001GeminiRawAnalysis:
 
 
 @dataclass(frozen=True)
+class CR001SingleImageExtractionResult:
+    """Single-image CR-001 extraction result after the valid-raw gate."""
+
+    valid: bool
+    source_image: str
+    raw_response_text: str | None = None
+    model: str | None = None
+    record: dict[str, Any] | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class CR001GeminiAnalysisClient:
     """Injectable CR-001 Gemini image-analysis client."""
 
@@ -265,6 +277,57 @@ def build_cr001_generate_content_payload(
             "temperature": 0.2,
         },
     }
+
+
+def extract_cr001_single_image_record(
+    *,
+    reference_image_manifest_record: Mapping[str, Any],
+    raw_extractor: Callable[..., Sequence[CR001GeminiRawAnalysis]],
+) -> CR001SingleImageExtractionResult:
+    """Run one CR-001 manifest record through raw extraction and validation."""
+
+    source_image = _manifest_record_source_image(reference_image_manifest_record)
+    raw_analyses = tuple(raw_extractor((reference_image_manifest_record,)))
+    if len(raw_analyses) != 1:
+        return CR001SingleImageExtractionResult(
+            valid=False,
+            source_image=source_image,
+            error="CR-001 single-image extraction expected exactly one raw analysis",
+        )
+
+    raw_analysis = raw_analyses[0]
+    if raw_analysis.source_image != source_image:
+        return CR001SingleImageExtractionResult(
+            valid=False,
+            source_image=source_image,
+            raw_response_text=raw_analysis.response_text,
+            model=raw_analysis.model,
+            error=(
+                "CR-001 single-image extraction source_image mismatch: "
+                f"{raw_analysis.source_image}"
+            ),
+        )
+
+    parse_result = parse_cr001_raw_response(
+        raw_response=raw_analysis.response_text,
+        source_image=source_image,
+    )
+    if not parse_result.valid:
+        return CR001SingleImageExtractionResult(
+            valid=False,
+            source_image=source_image,
+            raw_response_text=raw_analysis.response_text,
+            model=raw_analysis.model,
+            error=parse_result.error,
+        )
+
+    return CR001SingleImageExtractionResult(
+        valid=True,
+        source_image=source_image,
+        raw_response_text=raw_analysis.response_text,
+        model=raw_analysis.model,
+        record=parse_result.record,
+    )
 
 
 def build_cr001_gemini_prompt(source_image_label: str | None = None) -> str:

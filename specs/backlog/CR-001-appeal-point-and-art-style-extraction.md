@@ -336,8 +336,8 @@ decision / implementation verification，可進入 CR-001 atomic item decomposit
 
 Status：`active-implementation`；the revised atomic table below is accepted as
 CR-001 v1 implementation scope.
-workflow_step：`Step 6 - Implementation / CR-001-07A`；下一步由 `CR-001-07A`
-single-image CR-001 extraction orchestration 開始，依 revised atomic items 順序實作。
+workflow_step：`Step 6 - Implementation / CR-001-07B`；下一步由 `CR-001-07B`
+batch integration 開始，依 revised atomic items 順序實作。
 
 Current DA conclusion：
 
@@ -396,6 +396,10 @@ Implementation progress:
   extractor seam with injected fake transport in baseline tests. This slice
   returns raw response text only and does not parse, validate, write native
   artifacts, or call the real Gemini API in unittest.
+- `CR-001-07A` completed: single-image orchestration now runs one manifest
+  record through raw extraction and the valid-raw parser, preserves raw response
+  text, enforces source-image traceability, and keeps invalid raw isolated from
+  native records without file writes or batch behavior.
 
 Decision candidates already suitable for the revised table：
 
