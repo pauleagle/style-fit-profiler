@@ -3,6 +3,15 @@
 狀態：Post-P0 Experimental Spec，experimental batch analyzer helpers 已完成；仍為 opt-in，尚未取代 baseline default。
 前置條件：Phase 0 baseline 已完成並驗證；至少一個單張 reference image analysis flow 已跑通。
 
+CR-001-FU-01 status note：
+
+- 本 spec 的 batch helper contract 屬於 deterministic / legacy Phase 0 candidate
+  schema support，並保留 notebook preview、regression reference 與 compatibility 用途。
+- `gemini_batch_probe` 的 user-facing default 已由 CR-001-FU-01 改為 CR-001 native
+  output；legacy batch output 必須透過 `--backend legacy` 顯式 opt in。
+- `style_gene_candidates.json` 在 manual Gemini batch flow 中不是 CR-001 primary
+  artifact，也不是跨圖整合結果。
+
 Intent：
 
 - 在既有 Phase 0 reference image analysis 之上，提供 batch-oriented 的分析 wrapper，讓多張 reference images 可以依固定批次處理。
@@ -52,7 +61,8 @@ Output contract：
   - batch status
   - batch-level error（若失敗）
   - batch output paths
-- Manual Gemini batch flow 必須輸出 `phase0/reference_image_analysis.json`，其中每張 image 各自保留：
+- Legacy manual Gemini batch flow 必須輸出 `phase0/reference_image_analysis.json`，
+  其中每張 image 各自保留：
   - reference image path
   - batch index
   - analysis status
@@ -63,7 +73,9 @@ Output contract：
   - `version`
   - `source`
   - `aspects`
-- 在 Gemini batch flow 中，`style_gene_candidates.json` 只是 Phase 0 candidate schema 的相容投影，不代表已完成跨圖整合。
+- 在 legacy Gemini batch flow 中，`style_gene_candidates.json` 只是 Phase 0
+  candidate schema 的 compatibility projection，不代表已完成跨圖整合，也不是
+  CR-001 primary artifact。
 - `source` 應能辨識為 batch analysis flow，而不是單張 probe flow。
 - 每個 candidate gene 的 `source_images` 必須保留原始 reference image relative path。
 - 若同一 trait 由多個 batch 提出，aggregator 必須能保留去重或合併後的穩定 ID 規則。
@@ -117,6 +129,7 @@ Candidate experimental atomic items：
 Open questions：
 
 - Batch planner 應先以固定張數切批，還是以檔案大小 / provider limit 切批？
-- Aggregated output 應直接覆蓋單一 `style_gene_candidates.json`，還是先保留 batch fragments 再由獨立 merge step 收斂？
+- Legacy aggregated output 應直接覆蓋單一 `style_gene_candidates.json`，還是先保留
+  batch fragments 再由獨立 merge step 收斂？
 - Batch 失敗時應採部分成功輸出，還是預設 fail-fast？
 - 是否需要把 batch metadata 納入 run manifest，作為後續重試與 audit 的一部分？

@@ -18,7 +18,7 @@ formal_spec_path: specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-pat
 parent_spec_path: specs/backlog/CR-001-appeal-point-and-art-style-extraction.md
 root_spec_path: SPEC.md
 workflow_step: Step 4 - Atomic Decomposition
-next_workflow_step: Start CR-001-FU-01D Legacy prompt/schema and planning-doc wording cleanup
+next_workflow_step: Start CR-001-FU-01E Default behavior regression verification
 ```
 
 ## Drill-down Status
@@ -28,7 +28,7 @@ Formal spec：[`specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths
 Current status：Devil's Advocate review complete；atomic cleanup in progress.
 `CR-001-FU-01B` README manual command docs cleanup is complete；`CR-001-FU-01C`
 root Phase 0 contract wording cleanup is complete；next remaining slice：
-`CR-001-FU-01D`.
+`CR-001-FU-01E`.
 
 ## Summary
 
@@ -103,7 +103,16 @@ phase0/cr001_reference_image_analysis.json
 
 Legacy Phase 0 output may remain only if it is explicit.
 
-Acceptable examples:
+Current implemented opt-in:
+
+```bash
+python -m style_fit_profiler.gemini_image_probe --backend legacy reference_images/ref-001.png
+python -m style_fit_profiler.gemini_batch_probe --backend legacy
+```
+
+The following names are brainstorming examples only. They are not implemented,
+not accepted CLI contracts, and must not be copied into README, tests, or user
+instructions unless a later accepted spec explicitly adds them:
 
 ```bash
 python -m style_fit_profiler.project_cr001_to_legacy_phase0

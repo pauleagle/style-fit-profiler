@@ -24,7 +24,7 @@ related_items:
   - EXP-001
   - EXP-002
 workflow_step: Step 4 - Atomic Decomposition
-next_workflow_step: Start CR-001-FU-01D Legacy prompt/schema and planning-doc wording cleanup
+next_workflow_step: Start CR-001-FU-01E Default behavior regression verification
 ```
 
 ## Parent Trace
@@ -108,8 +108,12 @@ DA resolution notes:
   separates deterministic v0.1.0 `style_gene_candidates.json` baseline from
   CR-001 manual Gemini native defaults without rewriting accepted Phase 0
   behavior.
-- The next actionable slice is `CR-001-FU-01D`, which should handle older EXP /
-  notebook / raw backlog wording now that README and root `SPEC.md` are stable.
+- `CR-001-FU-01D` legacy prompt/schema and planning-doc wording cleanup is
+  complete; older EXP / notebook / raw backlog wording is now labeled as
+  deterministic baseline, legacy compatibility, or brainstorming-only where
+  appropriate.
+- The next actionable slice is `CR-001-FU-01E`, default behavior regression
+  verification.
 
 ## Required Behavior
 
@@ -145,7 +149,7 @@ Legacy behavior:
 - [ ] `gemini_batch_probe` default remains CR-001 native and legacy output
   requires explicit opt-in.
 - [ ] CR-001 native default paths do not write `style_gene_candidates.json`.
-- [ ] Legacy Phase 0 docs and commands are labeled as deprecated,
+- [x] Legacy Phase 0 docs and commands are labeled as deprecated,
   compatibility, or non-primary where they remain.
 - [ ] Root `SPEC.md` no longer presents the legacy three-aspect Gemini output as
   the CR-001 primary artifact.
@@ -164,8 +168,8 @@ be executed one at a time and checkpointed before moving to the next item.
 | `CR-001-FU-01A` | completed-by-drill-down-setup | Traceability and status sync | Raw backlog, formal follow-up spec, parent CR-001 spec, root index, and backlog index now trace to one another. Reopen only if links drift. |
 | `CR-001-FU-01B` | completed | README manual command docs cleanup | README examples now state that default single/batch commands produce CR-001 native artifacts, and legacy-only `--raw` / `--prompt-file` examples include `--backend legacy`. |
 | `CR-001-FU-01C` | completed | Root Phase 0 contract wording | Root `SPEC.md` now separates deterministic v0.1.0 `style_gene_candidates.json` baseline from CR-001 native manual Gemini defaults without rewriting accepted deterministic Phase 0 behavior. |
-| `CR-001-FU-01D` | next | Legacy prompt/schema and planning-doc wording | Review EXP-001 / EXP-002 / EXP-003, notebook docs, and raw backlog future examples. Label compatibility behavior without promising non-existent flags. |
-| `CR-001-FU-01E` | pending | Default behavior regression verification | Preserve existing tests for CR-001 default single/batch commands, no default legacy output, and explicit `--backend legacy` opt-in; add tests only if cleanup changes behavior. |
+| `CR-001-FU-01D` | completed | Legacy prompt/schema and planning-doc wording | EXP-001 / EXP-002 / EXP-003 and raw backlog wording now labels deterministic baseline, legacy compatibility, and brainstorming-only examples without promising non-existent flags. |
+| `CR-001-FU-01E` | next | Default behavior regression verification | Preserve existing tests for CR-001 default single/batch commands, no default legacy output, and explicit `--backend legacy` opt-in; add tests only if cleanup changes behavior. |
 | `CR-001-FU-01F` | conditional | Import-order smoke coverage | Add or run lightweight `python -m` smoke coverage only if import graph code changes or warnings reappear. |
 
 ## Non-goals
@@ -197,7 +201,7 @@ Minimum validation for spec-only edits:
 
 ## Handoff
 
-Next recommended step: start `CR-001-FU-01D` legacy prompt/schema and
-planning-doc wording cleanup. Do not start projection work or add new legacy CLI
-aliases as part of this follow-up unless a later accepted spec explicitly
-changes the projection policy.
+Next recommended step: start `CR-001-FU-01E` default behavior regression
+verification. Do not start projection work or add new legacy CLI aliases as part
+of this follow-up unless a later accepted spec explicitly changes the projection
+policy.

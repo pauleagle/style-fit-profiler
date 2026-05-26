@@ -444,7 +444,7 @@ Implementation progress:
 
 | ID | Status | Spec | Source | Reason | Blocks frozen CR-001 v1 native baseline |
 |---|---|---|---|---|---|
-| `CR-001-FU-01` | In progress；root SPEC wording completed；next `CR-001-FU-01D` | [`CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) | [`../../backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](../../backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) | Deprecate legacy Phase 0 default paths and make CR-001 native artifact the default manual Gemini Phase 0 baseline. | No. It is required before docs and entrypoint defaults can be called migration-clean. |
+| `CR-001-FU-01` | In progress；legacy wording cleanup completed；next `CR-001-FU-01E` | [`CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) | [`../../backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](../../backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) | Deprecate legacy Phase 0 default paths and make CR-001 native artifact the default manual Gemini Phase 0 baseline. | No. It is required before docs and entrypoint defaults can be called migration-clean. |
 
 ## Decision: CR-001 v1 native baseline freeze
 

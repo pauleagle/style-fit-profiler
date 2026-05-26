@@ -3,6 +3,16 @@
 狀態：Post-P0 Experimental Spec，experimental notebook wrapper helpers 已完成；仍為 opt-in，尚未成為正式 production entrypoint。
 前置條件：Phase 0 baseline 已完成並驗證；至少一個可重現的本機 Phase 0 flow 已跑通。
 
+CR-001-FU-01 status note：
+
+- 本 spec 的 notebook wrapper 目前包裝 deterministic / legacy Phase 0 candidate
+  schema flow，主要用於 preview、export、demo 與 review。
+- Notebook 產出的 `style_gene_candidates.json` 不是 CR-001 primary artifact；CR-001
+  manual Gemini default 的 primary artifact 是
+  `phase0/cr001_reference_image_analysis.json`。
+- 若 notebook 未來要支援 CR-001 native artifacts 或 CR-001-to-legacy projection，
+  必須另走 accepted spec，不可由本 EXP-003 wording 隱含承諾。
+
 Intent：
 
 - 提供一個 Colab-friendly 的 wrapper，讓使用者可在 notebook 介面中執行 Phase 0 reference image analysis。
@@ -46,9 +56,9 @@ Input contract：
 
 Output contract：
 
-- Notebook 應產生與核心 Phase 0 flow 相同語意的輸出：
+- Notebook 應產生與 deterministic / legacy Phase 0 flow 相同語意的輸出：
   - `reference_image_manifest.json`
-  - `style_gene_candidates.json`
+  - `style_gene_candidates.json`（deterministic / legacy Phase 0 candidate schema）
   - batch / run metadata
 - Notebook wrapper 應保留輸出下載入口，讓使用者能將 analysis artifacts 匯出到本機。
 - Notebook 中的 preview 不得改變正式輸出內容。

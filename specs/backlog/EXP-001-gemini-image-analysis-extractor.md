@@ -1,17 +1,27 @@
 # EXP-001: Gemini Image Analysis Extractor
 
-狀態：Post-P0 Experimental Spec，experimental extractor 已完成；仍為 opt-in，尚未取代 baseline default。
+狀態：Post-P0 Experimental Spec，experimental extractor 已完成；仍為 opt-in，尚未取代 deterministic baseline default。
 前置條件：Phase 0 baseline 已完成並驗證；manual Gemini image probe 已跑通。
+
+CR-001-FU-01 status note：
+
+- 本 spec 保留的是 legacy EXP-001 三面向 extractor / compatibility path 的歷史與測試契約。
+- `gemini_image_probe` 的 user-facing default 已由 CR-001-FU-01 改為 CR-001 native output；
+  舊三面向 Gemini path 只能透過 `--backend legacy` 顯式 opt in。
+- 本 spec 不承諾 `--legacy-phase0`、`--output-format legacy-phase0` 或 projection command；
+  若未來新增別名或投影命令，必須另走 accepted spec。
 
 Intent：
 
-- 將已驗證可用的 `gemini_image_probe.py` 拆成正式、opt-in 的 Phase 0 experimental extractor。
+- 將已驗證可用的 legacy Gemini image analysis path 拆成正式、opt-in 的 Phase 0
+  experimental extractor。
 - 使用 Google Gemini multimodal API 分析本機 reference images，輸出可轉換成 `StyleGeneCandidate` 的三面向候選 genes。
 - 保留 deterministic mock extractor 作為 baseline default；Gemini extractor 僅在明確設定或手動命令下啟用。
 
 背景：
 
-- 手動 probe 已能讀取本機圖片、使用 `GEMINI_API_KEY` 呼叫 Gemini REST `generateContent`，並取得符合 Phase 0 三面向的 JSON。
+- Legacy manual probe 已能讀取本機圖片、使用 `GEMINI_API_KEY` 呼叫 Gemini REST
+  `generateContent`，並取得符合 Phase 0 三面向的 JSON。
 - Probe 實測回傳包含 `rendering`、`color_light`、`texture_artifacts` 與 `notes`。
 - 目前 probe 是人工工具，尚未納入 `run_phase0` production path，也尚未把 Gemini JSON 轉成正式 `StyleGeneCandidate` records。
 
@@ -93,17 +103,19 @@ Candidate experimental atomic items：
   - 完成依據：baseline tests 通過；extractor tests 覆蓋 manifest-record input、fake Gemini client、P0-06 / P0-09 compatible output、explicit run_phase0 opt-in、API failure source traceability 與 no gene pool overwrite。
   - 實作符合 `Phase0Extractor` 的 extractor。
   - 明確 opt-in，不改 deterministic mock default。
-- `EXP-001E`: Manual integration command
+- `EXP-001E`: Legacy manual integration command
   - 狀態：已完成。
   - 完成依據：baseline tests 通過；manual command tests 覆蓋 CLI options、missing `GEMINI_API_KEY` guard 與 fake-client raw output path；README 已文件化 PowerShell 指令、環境變數與安全注意事項。
-  - 保留或整理 `gemini_image_probe.py` 作為手動驗證入口。
+  - 保留或整理 `gemini_image_probe.py --backend legacy` 作為 legacy 手動驗證入口。
   - 文件化本機圖片測試指令、環境變數與安全注意事項。
-- `EXP-001F`: Manual Gemini batch command
+- `EXP-001F`: Legacy manual Gemini batch command
   - 狀態：已完成。
   - 完成依據：baseline tests 通過；batch command tests 覆蓋 CLI options、missing `GEMINI_API_KEY` guard、multi-image batch request、per-image analysis output path、partial failure report 與 non-zero exit code；README 已文件化 PowerShell 指令、輸出位置與安全注意事項。
-  - 新增 `gemini_batch_probe.py` 作為手動批次驗證入口。
+  - 新增 `gemini_batch_probe.py --backend legacy` 作為 legacy 手動批次驗證入口。
   - 每個 batch 以一次 multi-image Gemini request 送出多張 reference images，但回傳後必須逐圖記錄 analysis result，避免 Phase 0 提前整合跨圖 traits。
-  - 輸出 `reference_image_manifest.json`、逐圖 `reference_image_analysis.json`、相容投影 `style_gene_candidates.json` 與 `batch_run_report.json`。
+  - Legacy path 輸出 `reference_image_manifest.json`、逐圖
+    `reference_image_analysis.json`、相容投影 `style_gene_candidates.json` 與
+    `batch_run_report.json`。
 
 Follow-ups：
 
