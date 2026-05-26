@@ -873,7 +873,10 @@ def _manifest_record_source_image(record: Mapping[str, Any]) -> str:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Analyze one local image with Gemini.",
+        description=(
+            "Analyze one local image with Gemini and write CR-001 native or "
+            "legacy Phase 0 artifacts."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Example:\n"
@@ -910,7 +913,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--prompt-file",
         type=Path,
-        help="Optional UTF-8 prompt file. Defaults to the Phase 0 probe prompt.",
+        help=(
+            "Legacy backend only. Optional UTF-8 prompt file for EXP Phase 0 "
+            "trait JSON. Defaults to the legacy Phase 0 probe prompt."
+        ),
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -929,7 +935,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--raw",
         action="store_true",
-        help="Print the raw Gemini generateContent response JSON.",
+        help=(
+            "Legacy backend only. Print the raw Gemini generateContent "
+            "response JSON."
+        ),
     )
     return parser.parse_args(argv)
 

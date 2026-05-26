@@ -8,7 +8,7 @@ item_type: follow-up
 parent_type: CR
 parent_id: CR-001
 title: Deprecate legacy Phase 0 default paths
-status: in-progress
+status: implemented
 drill_down_status: complete
 devils_advocate_status: complete
 atomic_decomposition_status: da-reviewed
@@ -23,8 +23,8 @@ related_items:
   - CR-001-08
   - EXP-001
   - EXP-002
-workflow_step: Step 4 - Atomic Decomposition
-next_workflow_step: Start CR-001-FU-01E Default behavior regression verification
+workflow_step: Step 6 - Implementation Verified
+next_workflow_step: none
 ```
 
 ## Parent Trace
@@ -112,8 +112,10 @@ DA resolution notes:
   complete; older EXP / notebook / raw backlog wording is now labeled as
   deterministic baseline, legacy compatibility, or brainstorming-only where
   appropriate.
-- The next actionable slice is `CR-001-FU-01E`, default behavior regression
-  verification.
+- `CR-001-FU-01E` default behavior regression verification is complete.
+- `CR-001-FU-01F` import-order smoke coverage is complete. The compatibility
+  help text was also tightened so legacy-only flags are visibly documented as
+  requiring `--backend legacy`.
 
 ## Required Behavior
 
@@ -144,19 +146,19 @@ Legacy behavior:
 - [x] Raw backlog, formal follow-up spec, parent CR-001 spec, root `SPEC.md`,
   and backlog index can trace to one another.
 - [x] CR-001 parent spec contains a backlink to `CR-001-FU-01`.
-- [ ] `gemini_image_probe` default remains CR-001 native and legacy output
+- [x] `gemini_image_probe` default remains CR-001 native and legacy output
   requires explicit opt-in.
-- [ ] `gemini_batch_probe` default remains CR-001 native and legacy output
+- [x] `gemini_batch_probe` default remains CR-001 native and legacy output
   requires explicit opt-in.
-- [ ] CR-001 native default paths do not write `style_gene_candidates.json`.
+- [x] CR-001 native default paths do not write `style_gene_candidates.json`.
 - [x] Legacy Phase 0 docs and commands are labeled as deprecated,
   compatibility, or non-primary where they remain.
-- [ ] Root `SPEC.md` no longer presents the legacy three-aspect Gemini output as
+- [x] Root `SPEC.md` no longer presents the legacy three-aspect Gemini output as
   the CR-001 primary artifact.
-- [ ] Existing deterministic Phase 0 baseline behavior remains intact unless a
+- [x] Existing deterministic Phase 0 baseline behavior remains intact unless a
   later accepted spec explicitly changes it.
-- [ ] `python -m` entrypoints do not emit import-order `RuntimeWarning`.
-- [ ] Tests cover CR-001 native defaults and explicit legacy opt-in behavior.
+- [x] `python -m` entrypoints do not emit import-order `RuntimeWarning`.
+- [x] Tests cover CR-001 native defaults and explicit legacy opt-in behavior.
 
 ## DA-reviewed Atomic Items
 
@@ -169,8 +171,8 @@ be executed one at a time and checkpointed before moving to the next item.
 | `CR-001-FU-01B` | completed | README manual command docs cleanup | README examples now state that default single/batch commands produce CR-001 native artifacts, and legacy-only `--raw` / `--prompt-file` examples include `--backend legacy`. |
 | `CR-001-FU-01C` | completed | Root Phase 0 contract wording | Root `SPEC.md` now separates deterministic v0.1.0 `style_gene_candidates.json` baseline from CR-001 native manual Gemini defaults without rewriting accepted deterministic Phase 0 behavior. |
 | `CR-001-FU-01D` | completed | Legacy prompt/schema and planning-doc wording | EXP-001 / EXP-002 / EXP-003 and raw backlog wording now labels deterministic baseline, legacy compatibility, and brainstorming-only examples without promising non-existent flags. |
-| `CR-001-FU-01E` | next | Default behavior regression verification | Preserve existing tests for CR-001 default single/batch commands, no default legacy output, and explicit `--backend legacy` opt-in; add tests only if cleanup changes behavior. |
-| `CR-001-FU-01F` | conditional | Import-order smoke coverage | Add or run lightweight `python -m` smoke coverage only if import graph code changes or warnings reappear. |
+| `CR-001-FU-01E` | completed | Default behavior regression verification | Focused regression and full unittest pass; existing tests preserve CR-001 default single/batch commands, no default legacy output, and explicit `--backend legacy` opt-in. |
+| `CR-001-FU-01F` | completed | Import-order smoke coverage | `python -W error::RuntimeWarning -m ... --help` smoke checks pass for `gemini_image_probe`, `gemini_batch_probe`, and `cr001_gemini_probe`. |
 
 ## Non-goals
 
@@ -199,9 +201,19 @@ Minimum validation for spec-only edits:
 - `rg -n "CR-001-FU-01|legacy|--backend legacy|cr001_reference_image_analysis" SPEC.md specs README.md backlog src tests`
 - `git diff --check`
 
+## Verification Summary
+
+Completed validation:
+
+- `python -m unittest tests.test_gemini_image_probe tests.test_gemini_batch_probe tests.test_cr001_gemini_probe tests.test_cr001_batch_integration`
+- `python -m unittest discover -s tests`
+- `python -W error::RuntimeWarning -m style_fit_profiler.gemini_image_probe --help`
+- `python -W error::RuntimeWarning -m style_fit_profiler.gemini_batch_probe --help`
+- `python -W error::RuntimeWarning -m style_fit_profiler.cr001_gemini_probe --help`
+- `git diff --check`
+
 ## Handoff
 
-Next recommended step: start `CR-001-FU-01E` default behavior regression
-verification. Do not start projection work or add new legacy CLI aliases as part
-of this follow-up unless a later accepted spec explicitly changes the projection
-policy.
+`CR-001-FU-01` is implemented. Do not start projection work or add new legacy
+CLI aliases as part of this follow-up unless a later accepted spec explicitly
+changes the projection policy.

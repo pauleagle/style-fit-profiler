@@ -220,7 +220,10 @@ def run_gemini_batch_probe(
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Analyze reference_images in batches with Gemini and write Phase 0 artifacts.",
+        description=(
+            "Analyze reference_images in batches with Gemini and write CR-001 "
+            "native or legacy Phase 0 artifacts."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Example:\n"
@@ -274,7 +277,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--prompt-file",
         type=Path,
-        help="Optional UTF-8 batch prompt file. Defaults to the Phase 0 batch probe prompt.",
+        help=(
+            "Legacy backend only. Optional UTF-8 batch prompt file for EXP "
+            "Phase 0 style_gene_candidates output. Defaults to the legacy "
+            "Phase 0 batch probe prompt."
+        ),
     )
     parser.add_argument(
         "--timeout-seconds",

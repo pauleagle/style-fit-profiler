@@ -7,7 +7,7 @@ item_id: CR-001-FU-01
 item_type: follow-up
 parent_cr: CR-001
 title: Deprecate legacy Phase 0 default paths
-status: in-progress
+status: implemented
 drill_down_status: complete
 devils_advocate_status: complete
 atomic_decomposition_status: da-reviewed
@@ -17,18 +17,17 @@ legacy_policy: deprecated-explicit-projection
 formal_spec_path: specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md
 parent_spec_path: specs/backlog/CR-001-appeal-point-and-art-style-extraction.md
 root_spec_path: SPEC.md
-workflow_step: Step 4 - Atomic Decomposition
-next_workflow_step: Start CR-001-FU-01E Default behavior regression verification
+workflow_step: Step 6 - Implementation Verified
+next_workflow_step: none
 ```
 
 ## Drill-down Status
 
 Formal spec：[`specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](../specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md)
 
-Current status：Devil's Advocate review complete；atomic cleanup in progress.
-`CR-001-FU-01B` README manual command docs cleanup is complete；`CR-001-FU-01C`
-root Phase 0 contract wording cleanup is complete；next remaining slice：
-`CR-001-FU-01E`.
+Current status：implemented. README / root SPEC / legacy planning-doc cleanup,
+default behavior regression verification, and import-order smoke verification
+are complete.
 
 ## Summary
 
