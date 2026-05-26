@@ -74,7 +74,14 @@ Phase 0 預期分成三個面向：
 
 #### Manual Gemini Image Probe
 
-EXP-001 保留一個手動 Gemini 圖片分析入口，供本機確認單張 reference image 是否能回傳 Phase 0 三面向 traits。此入口不是預設 Phase 0 backend，也不納入 CI；正式 Phase 0 baseline 仍使用 deterministic mock extractor，Gemini extractor 必須明確 opt in。
+`gemini_image_probe` 現在預設輸出 CR-001 native artifact。也就是說，不帶
+`--backend legacy` 的 command 會寫出
+`phase0/cr001_reference_image_analysis.json`，不會產生 legacy
+`style_gene_candidates.json`。
+
+舊 EXP-001 三面向 traits 路徑仍保留為 deprecated compatibility path，但必須用
+`--backend legacy` 顯式 opt in。此手動 Gemini 入口不納入 CI；正式 v0.1.0
+deterministic Phase 0 baseline 仍使用 mock extractor。
 
 PowerShell 範例：
 
@@ -84,21 +91,30 @@ $env:GEMINI_API_KEY = "<your key>"
 python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png
 ```
 
-可選參數：
+CR-001 native 常用參數：
 
 ```powershell
 python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --model gemini-2.5-flash
-python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --raw
-python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --prompt-file prompts/phase0-gemini.txt
+python -m style_fit_profiler.gemini_image_probe reference_images/ref-001.png --raw-output runs/manual-gemini-single/raw.json
+```
+
+Legacy compatibility 範例：
+
+```powershell
+python -m style_fit_profiler.gemini_image_probe --backend legacy reference_images/ref-001.png
+python -m style_fit_profiler.gemini_image_probe --backend legacy reference_images/ref-001.png --raw
+python -m style_fit_profiler.gemini_image_probe --backend legacy reference_images/ref-001.png --prompt-file prompts/phase0-gemini.txt
 ```
 
 #### Manual Gemini Batch Probe
 
-EXP-001 / EXP-002 也提供一個手動批次 Gemini 入口，供本機將 `reference_images/`
-中的多張圖片依固定 batch size 送入 Gemini。每個 batch 會以一次 multi-image
-Gemini request 送出，回傳後仍以逐圖 analysis record 保存；跨圖整合保留到後續
-phase 或人工審查時處理。
-此入口仍是 opt-in manual probe，不是預設 backend，也不納入 CI。
+`gemini_batch_probe` 現在也預設輸出 CR-001 native batch artifacts。每個 batch 仍以
+一次 multi-image Gemini request 送出，回傳後以逐圖 CR-001 native record 保存；
+跨圖整合保留到後續 phase 或人工審查時處理。此入口仍是 opt-in manual probe，
+不納入 CI。
+
+舊 EXP-001 / EXP-002 三面向 batch 輸出保留為 deprecated compatibility path，
+必須用 `--backend legacy` 顯式 opt in。
 
 PowerShell 範例：
 
@@ -113,14 +129,31 @@ python -m style_fit_profiler.gemini_batch_probe --input-dir reference_images --b
 ```powershell
 python -m style_fit_profiler.gemini_batch_probe --run-dir runs/manual-gemini-batch
 python -m style_fit_profiler.gemini_batch_probe --model gemini-2.5-flash
-python -m style_fit_profiler.gemini_batch_probe --prompt-file prompts/phase0-gemini.txt
 python -m style_fit_profiler.gemini_batch_probe --timeout-seconds 90
 ```
 
-Batch `--prompt-file` 必須要求 Gemini 回傳 top-level `images` 陣列，且每筆 image
-record 使用原始 input path，否則 CLI 會視為 provider response schema error。
+CR-001 native batch 輸出位置：
 
-輸出位置：
+```text
+runs/manual-gemini-batch/
+└─ phase0/
+   ├─ reference_image_manifest.json
+   ├─ cr001_reference_image_analysis.json
+   └─ cr001_batch_run_report.json
+```
+
+Legacy compatibility 範例：
+
+```powershell
+python -m style_fit_profiler.gemini_batch_probe --backend legacy --input-dir reference_images --batch-size 2
+python -m style_fit_profiler.gemini_batch_probe --backend legacy --prompt-file prompts/phase0-gemini.txt
+```
+
+Legacy batch `--prompt-file` 必須要求 Gemini 回傳 top-level `images` 陣列，且每筆
+image record 使用原始 input path，否則 CLI 會視為 provider response schema
+error。
+
+Legacy compatibility 輸出位置：
 
 ```text
 runs/manual-gemini-batch/
@@ -132,8 +165,9 @@ runs/manual-gemini-batch/
 ```
 
 `reference_image_analysis.json` 是逐圖分析紀錄；`style_gene_candidates.json`
-是保留既有 Phase 0 candidate schema 的相容投影，方便 preview / validator 使用，
-不是最終整合結果。若部分 batch 失敗，CLI 仍會寫出可用的 partial
+是保留既有 Phase 0 candidate schema 的 deprecated compatibility projection，
+方便 preview / validator 使用，不是 CR-001 primary artifact，也不是最終整合結果。
+若 legacy batch 部分失敗，CLI 仍會寫出可用的 partial
 `reference_image_analysis.json`、`style_gene_candidates.json` 與
 `batch_run_report.json`，並以非零 exit code 結束，方便人工檢查與重試。
 

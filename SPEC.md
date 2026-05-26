@@ -5,7 +5,7 @@
 - 目標版本：`v0.1.0`
 - 版本名稱：Optional reference-image bootstrap + interactive style exploration MVP
 - 規格狀態：Draft
-- 最後更新：2026-05-24
+- 最後更新：2026-05-26
 
 本文件是 `style-fit-profiler` 的實作與驗證契約。README 負責說明概念、
 用途與 roadmap；本 spec 負責定義目前版本目標中哪些行為必須被實作、測試
@@ -554,7 +554,7 @@ active work 後，才可進入 implementation 或 atomic decomposition。
 | `EXP-002` Phase 0 Batch Reference Image Analysis | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-002-phase0-batch-reference-image-analysis.md`](specs/backlog/EXP-002-phase0-batch-reference-image-analysis.md) |
 | `EXP-003` Colab Notebook Wrapper for Phase 0 | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-003-colab-notebook-wrapper-for-phase0.md`](specs/backlog/EXP-003-colab-notebook-wrapper-for-phase0.md) |
 | `CR-001` Appeal Point and Art Style Extraction | CR-001 v1 native baseline accepted / frozen; `CR-001-08` deferred pending projection-policy decision | [`specs/backlog/CR-001-appeal-point-and-art-style-extraction.md`](specs/backlog/CR-001-appeal-point-and-art-style-extraction.md) |
-| `CR-001-FU-01` Deprecate Legacy Phase 0 Default Paths | DA reviewed; ready for atomic decomposition; next `CR-001-FU-01B` | [`specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) |
+| `CR-001-FU-01` Deprecate Legacy Phase 0 Default Paths | In progress; README manual command docs cleanup completed; next `CR-001-FU-01C` | [`specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) |
 
 ## Testing Implications
 
