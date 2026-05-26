@@ -21,11 +21,13 @@ from style_fit_profiler.gemini_batch_probe import (  # noqa: E402
     LEGACY_BATCH_BACKEND,
     main,
     parse_args,
+    run_gemini_batch_probe,
 )
 from style_fit_profiler.gemini_image_probe import (  # noqa: E402
     DEFAULT_BATCH_ANALYSIS_PROMPT,
     GeminiImageProbeError,
 )
+from style_fit_profiler.config import ProviderRetryPolicy  # noqa: E402
 
 
 CR001_FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "cr001"
@@ -433,10 +435,14 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
         )
         self.assertEqual(image_analysis["images"][1]["path"], "reference_images/b.png")
         self.assertIn("HTTP 500", image_analysis["images"][1]["error"])
-        self.assertEqual(len(image_analysis["raw_responses"]), 1)
+        self.assertEqual(len(image_analysis["raw_responses"]), 2)
         self.assertEqual(
             image_analysis["raw_responses"][0]["validation_status"],
             "valid",
+        )
+        self.assertEqual(
+            image_analysis["raw_responses"][1]["provider_error"]["type"],
+            "provider_internal_error",
         )
         self.assertEqual(len(candidates["aspects"]["rendering"]), 1)
 
@@ -589,6 +595,228 @@ class GeminiBatchProbeCommandTests(unittest.TestCase):
             [record["attempt_index"] for record in image_analysis["raw_responses"]],
             [1, 2],
         )
+
+    def test_exp_001_fu_01e_retries_retryable_provider_error_then_succeeds(self):
+        calls_by_image = {}
+
+        class FakeClient:
+            model = "gemini-test-model"
+
+            def analyze_images(self, *, image_paths, source_images):
+                first_name = image_paths[0].name
+                calls_by_image[first_name] = calls_by_image.get(first_name, 0) + 1
+                if first_name == "b.png" and calls_by_image[first_name] == 1:
+                    raise GeminiImageProbeError(
+                        'Gemini API HTTP 429: {"error":{"code":429,'
+                        '"status":"RESOURCE_EXHAUSTED",'
+                        '"message":"Quota exceeded. Please retry in 5s."}}'
+                    )
+                return json.dumps(
+                    {
+                        "images": [
+                            {
+                                "path": source_images[0],
+                                "rendering": [f"clean linework {Path(source_images[0]).stem}"],
+                                "color_light": [],
+                                "texture_artifacts": [],
+                                "notes": "fixture response",
+                            }
+                        ]
+                    }
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "gemini-batch"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+            (reference_dir / "b.png").write_bytes(_png_header_bytes(width=4, height=5))
+
+            result = run_gemini_batch_probe(
+                project_root=project_root,
+                input_dir="reference_images",
+                run_dir=run_dir,
+                batch_size=1,
+                max_attempts=2,
+                client=FakeClient(),
+                model="gemini-test-model",
+            )
+
+            image_analysis = json.loads(
+                (run_dir / "phase0" / "reference_image_analysis.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            report = json.loads(
+                (run_dir / "phase0" / "batch_run_report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertFalse(result.has_failed_batches)
+        self.assertEqual(calls_by_image, {"a.png": 1, "b.png": 2})
+        self.assertEqual(report["summary"]["retried_batches"], 1)
+        self.assertEqual(report["batches"][1]["attempt_count"], 2)
+        self.assertIsNone(report["batches"][1]["provider_error"])
+        self.assertEqual(
+            [record["provider_error"]["type"] if record["provider_error"] else None for record in image_analysis["raw_responses"]],
+            [None, "provider_quota_exhausted", None],
+        )
+
+    def test_exp_001_fu_01e_exhausted_retryable_provider_error_records_metadata(self):
+        class FakeClient:
+            model = "gemini-test-model"
+
+            def analyze_images(self, *, image_paths, source_images):
+                raise GeminiImageProbeError(
+                    'Gemini API HTTP 429: {"error":{"code":429,'
+                    '"status":"RESOURCE_EXHAUSTED",'
+                    '"message":"Quota exceeded. Please retry in 5s."}}'
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "gemini-batch"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+
+            result = run_gemini_batch_probe(
+                project_root=project_root,
+                input_dir="reference_images",
+                run_dir=run_dir,
+                batch_size=1,
+                max_attempts=2,
+                client=FakeClient(),
+                model="gemini-test-model",
+            )
+
+            image_analysis = json.loads(
+                (run_dir / "phase0" / "reference_image_analysis.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            report = json.loads(
+                (run_dir / "phase0" / "batch_run_report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertTrue(result.has_failed_batches)
+        self.assertEqual(report["summary"]["failed_batches"], 1)
+        self.assertEqual(report["summary"]["retryable_batch_indexes"], [0])
+        self.assertEqual(report["batches"][0]["attempt_count"], 2)
+        self.assertTrue(report["batches"][0]["retryable"])
+        self.assertEqual(
+            report["batches"][0]["provider_error"]["type"],
+            "provider_quota_exhausted",
+        )
+        self.assertEqual(len(image_analysis["raw_responses"]), 2)
+        self.assertEqual(
+            image_analysis["raw_responses"][-1]["provider_error"]["retry_after_seconds"],
+            5.0,
+        )
+
+    def test_exp_001_fu_01e_does_not_retry_non_retryable_provider_error(self):
+        calls = []
+
+        class FakeClient:
+            model = "gemini-test-model"
+
+            def analyze_images(self, *, image_paths, source_images):
+                calls.append(tuple(source_images))
+                raise GeminiImageProbeError(
+                    'Gemini API HTTP 400: {"error":{"code":400,'
+                    '"status":"INVALID_ARGUMENT",'
+                    '"message":"Bad request."}}'
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "gemini-batch"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+
+            result = run_gemini_batch_probe(
+                project_root=project_root,
+                input_dir="reference_images",
+                run_dir=run_dir,
+                batch_size=1,
+                max_attempts=3,
+                client=FakeClient(),
+                model="gemini-test-model",
+            )
+
+            report = json.loads(
+                (run_dir / "phase0" / "batch_run_report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertTrue(result.has_failed_batches)
+        self.assertEqual(calls, [("reference_images/a.png",)])
+        self.assertEqual(report["summary"]["retryable_batch_indexes"], [])
+        self.assertEqual(report["batches"][0]["attempt_count"], 1)
+        self.assertFalse(report["batches"][0]["retryable"])
+        self.assertEqual(report["batches"][0]["provider_error"]["type"], "invalid_request")
+
+    def test_exp_001_fu_01e_delay_enabled_uses_injected_sleeper(self):
+        calls = []
+        sleeps = []
+
+        class FakeClient:
+            model = "gemini-test-model"
+
+            def analyze_images(self, *, image_paths, source_images):
+                calls.append(tuple(source_images))
+                if len(calls) == 1:
+                    raise GeminiImageProbeError(
+                        'Gemini API HTTP 429: {"error":{"code":429,'
+                        '"status":"RESOURCE_EXHAUSTED",'
+                        '"message":"Quota exceeded. Please retry in 5s."}}'
+                    )
+                return json.dumps(
+                    {
+                        "images": [
+                            {
+                                "path": source_images[0],
+                                "rendering": ["clean linework"],
+                                "color_light": [],
+                                "texture_artifacts": [],
+                                "notes": "fixture response",
+                            }
+                        ]
+                    }
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "gemini-batch"
+            reference_dir.mkdir()
+            (reference_dir / "a.png").write_bytes(_png_header_bytes(width=2, height=3))
+
+            result = run_gemini_batch_probe(
+                project_root=project_root,
+                input_dir="reference_images",
+                run_dir=run_dir,
+                batch_size=1,
+                max_attempts=2,
+                client=FakeClient(),
+                model="gemini-test-model",
+                provider_retry_policy=ProviderRetryPolicy(
+                    max_attempts=2,
+                    delay_retry_enabled=True,
+                    retry_buffer_seconds=2,
+                ),
+                sleeper=sleeps.append,
+            )
+
+        self.assertFalse(result.has_failed_batches)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(sleeps, [7.0])
 
     def test_batch_probe_result_reports_failed_batches(self):
         result = GeminiBatchProbeResult(

@@ -987,6 +987,7 @@ class Phase0BatchFailureIsolationTests(unittest.TestCase):
                 "remaining_attempts": 0,
                 "retry_exhausted": True,
                 "next_retry_scope": "same_batch",
+                "provider_error": None,
             },
         )
 

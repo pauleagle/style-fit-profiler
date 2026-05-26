@@ -50,6 +50,12 @@ GEMINI_PROVIDER_STATUS_ERROR_TYPES = {
     "UNAUTHENTICATED": "auth_error",
     "PERMISSION_DENIED": "permission_error",
 }
+GEMINI_PROVIDER_HTTP_STATUS_ERROR_TYPES = {
+    429: "provider_quota_exhausted",
+    500: "provider_internal_error",
+    503: "provider_unavailable",
+    504: "provider_timeout",
+}
 GEMINI_RETRYABLE_PROVIDER_STATUSES = frozenset(
     {
         "RESOURCE_EXHAUSTED",
@@ -57,6 +63,18 @@ GEMINI_RETRYABLE_PROVIDER_STATUSES = frozenset(
         "INTERNAL",
         "DEADLINE_EXCEEDED",
     }
+)
+GEMINI_RETRYABLE_PROVIDER_ERROR_TYPES = frozenset(
+    {
+        "provider_quota_exhausted",
+        "provider_unavailable",
+        "provider_internal_error",
+        "provider_timeout",
+    }
+)
+GEMINI_PROVIDER_HTTP_ERROR_PATTERN = re.compile(
+    r"\bGemini API HTTP\s+([0-9]{3})\b",
+    re.IGNORECASE,
 )
 
 DEFAULT_ANALYSIS_PROMPT = """Analyze this local reference image for a style-fit profiler.
@@ -179,23 +197,28 @@ def classify_gemini_provider_error(error: object) -> GeminiProviderError:
         else payload
     )
     status = _normalize_gemini_provider_status(error_record.get("status"))
+    http_status = _normalize_gemini_provider_http_status(error_record.get("code"))
     message = error_record.get("message", "")
     if not isinstance(message, str):
         message = str(message)
 
     error_type = GEMINI_PROVIDER_STATUS_ERROR_TYPES.get(
         status or "",
-        "unknown_provider_error",
+        GEMINI_PROVIDER_HTTP_STATUS_ERROR_TYPES.get(
+            http_status,
+            "unknown_provider_error",
+        ),
     )
     return GeminiProviderError(
         type=error_type,
         provider_status=status,
-        retryable=status in GEMINI_RETRYABLE_PROVIDER_STATUSES,
+        retryable=(
+            status in GEMINI_RETRYABLE_PROVIDER_STATUSES
+            or error_type in GEMINI_RETRYABLE_PROVIDER_ERROR_TYPES
+        ),
         message=message,
         retry_after_seconds=extract_gemini_retry_after_seconds(message),
-        provider_http_status=_normalize_gemini_provider_http_status(
-            error_record.get("code")
-        ),
+        provider_http_status=http_status,
     )
 
 
@@ -298,6 +321,10 @@ def _gemini_provider_error_payload(error: object) -> Mapping[str, Any]:
             payload = None
         if isinstance(payload, Mapping):
             return payload
+
+    http_match = GEMINI_PROVIDER_HTTP_ERROR_PATTERN.search(text)
+    if http_match is not None:
+        return {"code": int(http_match.group(1)), "message": text}
 
     return {"message": text}
 

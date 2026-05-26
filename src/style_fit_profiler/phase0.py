@@ -107,6 +107,7 @@ class Phase0Batch:
 ReferenceImageManifestRecord = Mapping[str, Any]
 CandidateGenesByAspect = Mapping[str, Sequence[StyleGeneCandidate]]
 Phase0BatchAnalyzer = Callable[[Phase0Batch], CandidateGenesByAspect]
+Phase0BatchRetryHook = Callable[[Exception, int], None]
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,8 @@ class Phase0BatchResult:
     attempt_count: int = DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS
     max_attempts: int = DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS
     remaining_attempts: int = 0
+    retryable: bool | None = None
+    provider_error: Mapping[str, Any] | None = None
 
 
 class Phase0Extractor(Protocol):
@@ -185,6 +188,7 @@ def run_phase0_batches(
     batches: Sequence[Phase0Batch],
     analyzer: Phase0BatchAnalyzer,
     max_attempts: int = DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS,
+    before_retry: Phase0BatchRetryHook | None = None,
 ) -> tuple[Phase0BatchResult, ...]:
     """Run EXP-002B batch analysis while preserving per-batch status."""
 
@@ -200,7 +204,11 @@ def run_phase0_batches(
                     for aspect, candidates in analyzer(batch).items()
                 }
             except Exception as error:
-                if attempt_index < max_attempts:
+                retryable = getattr(error, "retryable", True)
+                provider_error = getattr(error, "provider_error", None)
+                if retryable and attempt_index < max_attempts:
+                    if before_retry is not None:
+                        before_retry(error, attempt_index)
                     continue
                 results.append(
                     Phase0BatchResult(
@@ -211,6 +219,8 @@ def run_phase0_batches(
                         attempt_count=attempt_index,
                         max_attempts=max_attempts,
                         remaining_attempts=0,
+                        retryable=retryable,
+                        provider_error=provider_error,
                     )
                 )
                 break
@@ -304,7 +314,11 @@ def build_phase0_batch_run_report(
             "status": batch_result.status.value,
             "error": batch_result.error,
             "output_paths": list(batch_result.output_paths),
-            "retryable": batch_result.status == Phase0BatchStatus.FAILED,
+            "retryable": (
+                batch_result.retryable
+                if batch_result.retryable is not None
+                else batch_result.status == Phase0BatchStatus.FAILED
+            ),
             "attempt_count": batch_result.attempt_count,
             "max_attempts": batch_result.max_attempts,
             "remaining_attempts": batch_result.remaining_attempts,
@@ -317,13 +331,24 @@ def build_phase0_batch_run_report(
                 if batch_result.status == Phase0BatchStatus.FAILED
                 else None
             ),
+            "provider_error": (
+                dict(batch_result.provider_error)
+                if batch_result.provider_error is not None
+                else None
+            ),
         }
         for batch_result in batch_results
+    ]
+    failed_batch_indexes = [
+        batch_record["batch_index"]
+        for batch_record in batch_records
+        if batch_record["status"] == Phase0BatchStatus.FAILED.value
     ]
     retryable_batch_indexes = [
         batch_record["batch_index"]
         for batch_record in batch_records
-        if batch_record["retryable"]
+        if batch_record["status"] == Phase0BatchStatus.FAILED.value
+        and batch_record["retryable"]
     ]
 
     return {
@@ -334,8 +359,11 @@ def build_phase0_batch_run_report(
             "completed_batches": sum(
                 1 for batch_record in batch_records if batch_record["status"] == Phase0BatchStatus.COMPLETED.value
             ),
-            "failed_batches": len(retryable_batch_indexes),
+            "failed_batches": len(failed_batch_indexes),
             "retryable_batch_indexes": retryable_batch_indexes,
+            "retried_batches": sum(
+                1 for batch_record in batch_records if batch_record["attempt_count"] > 1
+            ),
         },
         "batches": batch_records,
     }

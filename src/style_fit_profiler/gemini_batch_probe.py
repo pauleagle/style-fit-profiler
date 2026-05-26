@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 from typing import Any, Mapping
 
+from .config import ProviderRetryPolicy
 from .cr001 import CR001GeminiAnalysisClient
 from .cr001_gemini_probe import run_cr001_batch_probe
 from .gemini_image_probe import (
@@ -20,8 +21,12 @@ from .gemini_image_probe import (
     GeminiImageAnalysisClient,
     GeminiImageTraitAnalysis,
     GeminiImageProbeError,
+    classify_gemini_provider_error,
+    gemini_provider_error_to_json_record,
     map_gemini_traits_to_candidates,
     parse_gemini_batch_trait_response,
+    resolve_provider_retry_decision,
+    sleep_for_provider_retry_delay,
 )
 from .phase0 import (
     DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS,
@@ -49,6 +54,15 @@ CR001_BATCH_BACKEND = "cr001"
 REFERENCE_IMAGE_ANALYSIS_OUTPUT = Path("phase0/reference_image_analysis.json")
 STYLE_GENE_CANDIDATES_OUTPUT = Path("phase0/style_gene_candidates.json")
 BATCH_RUN_REPORT_OUTPUT = Path("phase0/batch_run_report.json")
+
+
+class GeminiBatchProviderError(GeminiImageProbeError):
+    """Provider failure with retry metadata for legacy batch runtime."""
+
+    def __init__(self, message: str, *, provider_error: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.provider_error = provider_error
+        self.retryable = bool(provider_error.get("retryable"))
 
 
 @dataclass(frozen=True)
@@ -84,6 +98,8 @@ def run_gemini_batch_probe(
     max_attempts: int,
     client: Any,
     model: str,
+    provider_retry_policy: ProviderRetryPolicy | None = None,
+    sleeper: Any | None = None,
 ) -> GeminiBatchProbeResult:
     """Run a manual EXP Gemini batch probe and write Phase 0 artifacts."""
 
@@ -107,6 +123,11 @@ def run_gemini_batch_probe(
     image_analyses_by_batch: dict[int, tuple[GeminiImageTraitAnalysis, ...]] = {}
     raw_responses_by_batch: dict[int, list[dict[str, Any]]] = {}
     attempt_indexes_by_batch: dict[int, int] = {}
+    retry_policy = provider_retry_policy or ProviderRetryPolicy(
+        max_attempts=max_attempts
+    )
+    total_delay_seconds = 0.0
+    delay_retry_count = 0
 
     def analyze_batch(batch: Phase0Batch) -> dict[str, tuple[StyleGeneCandidate, ...]]:
         attempt_index = attempt_indexes_by_batch.get(batch.index, 0) + 1
@@ -121,10 +142,37 @@ def run_gemini_batch_probe(
             raw_responses_by_batch=raw_responses_by_batch,
         )
 
+    def before_retry(error: Exception, attempt_index: int) -> None:
+        nonlocal total_delay_seconds, delay_retry_count
+        provider_error_record = getattr(error, "provider_error", None)
+        if provider_error_record is None:
+            return
+        provider_error = classify_gemini_provider_error(
+            {"error": {
+                "code": provider_error_record.get("provider_http_status"),
+                "status": provider_error_record.get("provider_status"),
+                "message": provider_error_record.get("message", ""),
+            }}
+        )
+        decision = resolve_provider_retry_decision(
+            provider_error=provider_error,
+            policy=retry_policy,
+            attempt_index=attempt_index,
+            total_delay_seconds=total_delay_seconds,
+            delay_retry_count=delay_retry_count,
+        )
+        if decision.wait_seconds is None:
+            return
+        if sleeper is not None:
+            sleep_for_provider_retry_delay(decision, sleeper=sleeper)
+        total_delay_seconds = decision.total_delay_after_wait_seconds
+        delay_retry_count += 1
+
     batch_results = run_phase0_batches(
         batches=batches,
         max_attempts=max_attempts,
         analyzer=analyze_batch,
+        before_retry=before_retry,
     )
     reference_image_analysis_document = _build_reference_image_analysis_document(
         batch_results=batch_results,
@@ -329,16 +377,31 @@ def _analyze_gemini_batch(
             source_images=source_images,
         )
     except GeminiImageProbeError as error:
+        provider_error = gemini_provider_error_to_json_record(
+            classify_gemini_provider_error(error)
+        )
+        raw_responses_by_batch.setdefault(batch.index, []).append(
+            {
+                "attempt_index": attempt_index,
+                "response_text": None,
+                "error": str(error),
+                "provider_error": provider_error,
+            }
+        )
         source_list = ", ".join(source_images)
-        raise GeminiImageProbeError(
-            f"Gemini batch image analysis failed for batch {batch.index} "
-            f"({source_list}): {error}"
+        raise GeminiBatchProviderError(
+            (
+                f"Gemini batch image analysis failed for batch {batch.index} "
+                f"({source_list}): {error}"
+            ),
+            provider_error=provider_error,
         ) from error
 
     raw_response_record: dict[str, Any] = {
         "attempt_index": attempt_index,
         "response_text": response_text,
         "error": None,
+        "provider_error": None,
     }
     raw_responses_by_batch.setdefault(batch.index, []).append(raw_response_record)
     try:
@@ -472,21 +535,29 @@ def _build_raw_response_records(
             and final_response
         )
         raw_error = raw_response.get("error")
+        provider_error = raw_response.get("provider_error")
         records.append(
             {
                 "batch_index": batch_result.batch_index,
                 "input_paths": list(batch_result.input_paths),
                 "attempt_index": attempt_index,
-                "raw_status": "completed",
+                "raw_status": "failed" if response_text is None else "completed",
                 "validation_status": (
                     "valid"
                     if valid_response
+                    else "provider_retryable"
+                    if provider_error is not None
+                    and provider_error.get("retryable")
+                    and attempt_index < batch_result.max_attempts
+                    else "provider_non_retryable"
+                    if provider_error is not None
                     else "invalid_retryable"
                     if attempt_index < batch_result.max_attempts
                     else "invalid_non_retryable"
                 ),
                 "response_text": response_text,
                 "error": None if valid_response else raw_error or batch_result.error,
+                "provider_error": provider_error,
             }
         )
     return records
@@ -508,6 +579,8 @@ def _attach_output_path_to_batch_results(
             attempt_count=batch_result.attempt_count,
             max_attempts=batch_result.max_attempts,
             remaining_attempts=batch_result.remaining_attempts,
+            retryable=batch_result.retryable,
+            provider_error=batch_result.provider_error,
         )
         for batch_result in batch_results
     )
