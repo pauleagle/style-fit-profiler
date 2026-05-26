@@ -7,7 +7,7 @@ item_id: EXP-001-FU-01
 item_type: follow-up
 parent_type: EXP
 parent_id: EXP-001
-status: proposed
+status: implemented
 drill_down_status: complete
 atomic_decomposition_status: da-reviewed
 title: Add retryable provider error handling
@@ -18,14 +18,15 @@ root_spec_path: SPEC.md
 related_items:
   - EXP-002
   - CR-001
-integration_status: ready-for-step-5-test-design
-workflow_step: Step 5 - Spec-Based Test Design
-next_atomic_item: EXP-001-FU-01A
+integration_status: implemented
+workflow_step: Step 6 - Implementation Verified
+next_atomic_item: none
 ```
 
 ## Status
 
-Proposed
+Implemented. This raw backlog file is retained as the source draft; the current
+implementation contract and final verification notes live in the formal spec.
 
 ## Parent
 
@@ -42,7 +43,7 @@ Follow-up / Runtime Infrastructure
 
 Formal spec source: `specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md`.
 
-Atomic decomposition status: `da-reviewed`; next workflow step is Step 5 test design for `EXP-001-FU-01A`.
+Atomic decomposition status: `da-reviewed`; all atomic items `EXP-001-FU-01A` through `EXP-001-FU-01G` are implemented.
 
 Current accepted drill-down decisions:
 
@@ -76,6 +77,13 @@ Accepted atomic split:
 - `EXP-001-FU-01G`: Manual command docs and final traceability update.
 
 This working draft may contain older exploratory wording below; the formal spec path above is the current implementation contract.
+
+Final traceability:
+
+- Formal spec: `specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md`
+- Parent spec: `specs/backlog/EXP-001-gemini-image-analysis-extractor.md`
+- Root index: `SPEC.md`
+- Backlog index: `specs/backlog/README.md`
 
 ## Summary
 

@@ -7,7 +7,7 @@ item_id: EXP-001-FU-01
 item_type: follow-up
 parent_type: EXP
 parent_id: EXP-001
-status: proposed
+status: implemented
 drill_down_status: complete
 atomic_decomposition_status: da-reviewed
 title: Retryable provider error handling
@@ -17,9 +17,9 @@ root_spec_path: SPEC.md
 related_items:
   - EXP-002
   - CR-001
-integration_status: implementation-in-progress
-workflow_step: Step 5 - Spec-Based Test Design
-next_atomic_item: EXP-001-FU-01G
+integration_status: implemented
+workflow_step: Step 6 - Implementation Verified
+next_atomic_item: none
 ```
 
 ## Parent Trace
@@ -35,14 +35,15 @@ This follow-up does not reopen the completed EXP-001 helper work. It blocks only
 
 Gate status: `pass`
 
-Reason: human decisions have resolved the retry layer boundary, single-image coverage, and delay retry policy. Atomic items have been decomposed and DA-reviewed; the next step is Step 5 test design for `EXP-001-FU-01A`.
+Reason: human decisions resolved the retry layer boundary, single-image coverage, and delay retry policy. Atomic items were decomposed, DA-reviewed, implemented, verified, and closed with `EXP-001-FU-01G` traceability readback.
 
 Current code evidence:
 
-- `EXP-002` / legacy batch already has `max_attempts`, per-batch failure isolation, `retryable_batch_indexes`, `attempt_count`, `remaining_attempts`, and final invalid raw response status.
-- `CR-001` batch execution already retries failed image scope and preserves partial valid native records.
-- Current Gemini HTTP failures are surfaced as stringified `GeminiImageProbeError` messages from `call_gemini_generate_content(...)`; provider status, retry delay, and retryability are not yet machine-readable.
-- Current invalid model output retry behavior exists in batch flows, but it is not the same problem as provider-side quota/rate-limit retry.
+- Shared provider error classification and retry-delay parsing are implemented in `gemini_image_probe.py`.
+- Config-owned provider retry policy defaults are implemented under `reference_image_analysis_policy.provider_retry_policy`.
+- Legacy batch and CR-001 batch reports carry retryability, attempt counts, and provider error metadata.
+- Single-image probe commands classify provider failures for diagnostics but intentionally do not retry automatically.
+- Invalid model output retry behavior remains a separate validation retry path from provider-side quota/rate-limit retry.
 
 ### Numbered Drill-down Items
 
@@ -85,7 +86,7 @@ Implementation rule:
 | `EXP-001-FU-01D` | implemented | Step 6 - Implementation Verified | Single-image command diagnostics for legacy `gemini_image_probe` and CR-001 `cr001_gemini_probe single`: classify provider failures and fail fast without automatic retry. | `EXP-001-FU-01A`, optionally `EXP-001-FU-01B` for display policy | Simulated provider quota/auth errors prove single commands do not retry, return non-zero, and surface machine-readable provider metadata or clear diagnostic output without writing misleading semantic artifacts. |
 | `EXP-001-FU-01E` | implemented | Step 6 - Implementation Verified | Legacy EXP / Phase 0 batch integration for `gemini_batch_probe` and related batch report metadata. Delay retry stays off by default. | `EXP-001-FU-01A` through `EXP-001-FU-01C` | Quota error followed by success, exhausted quota error, non-retryable provider error, delay disabled immediate retry, delay enabled injected sleeper, partial output preservation, and summary retry counts. |
 | `EXP-001-FU-01F` | implemented | Step 6 - Implementation Verified | CR-001 batch integration for `cr001_gemini_probe batch` / `run_cr001_batch_extraction`, keeping CR-001 native semantic artifact clean while adding provider metadata to runtime report. | `EXP-001-FU-01A` through `EXP-001-FU-01C`; can reuse batch helpers from `EXP-001-FU-01E` | Retryable provider error followed by success, exhausted provider error in CR-001 batch report, native artifact remains semantic-only, non-retryable provider errors excluded from retry scope, summary retry counts, and manual mutation of non-retryable retry gating. |
-| `EXP-001-FU-01G` | accepted | Step 5 - Spec-Based Test Design | Manual command docs, README / spec traceability, and final verification notes. No code behavior ownership. | `EXP-001-FU-01A` through `EXP-001-FU-01F` | Documentation readback, traceability search for parent/follow-up IDs, `git diff --check`, and full unit suite if any code changed in the previous items. |
+| `EXP-001-FU-01G` | implemented | Step 6 - Implementation Verified | Manual command docs, README / spec traceability, and final verification notes. No code behavior ownership. | `EXP-001-FU-01A` through `EXP-001-FU-01F` | Documentation readback, traceability search for parent/follow-up IDs, `git diff --check`, and full unit suite if any code changed in the previous items. |
 
 ### Item Notes
 
@@ -202,6 +203,7 @@ Non-goals:
 Completion signal:
 
 - The follow-up can be traced from root index to parent spec to formal spec to raw backlog and back.
+- Implemented through the final docs/readback update; no runtime behavior was changed in this item.
 
 ## Devil's Advocate Review Of Atomic Decomposition
 
@@ -228,7 +230,30 @@ Open questions before implementation:
 
 Next workflow step:
 
-- Begin Step 5 test design / docs readback for `EXP-001-FU-01G`.
+- None for `EXP-001-FU-01`. This follow-up is complete.
+
+## Final Traceability Readback
+
+`EXP-001-FU-01` is intentionally traceable in both directions:
+
+- Root index: [`SPEC.md`](../../SPEC.md) points to this formal follow-up spec.
+- Parent EXP spec: [`EXP-001-gemini-image-analysis-extractor.md`](EXP-001-gemini-image-analysis-extractor.md) lists this follow-up and links back to the raw source draft.
+- Backlog index: [`README.md`](README.md) lists this formal spec.
+- Source draft: [`backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md`](../../backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md) points forward to this formal spec, parent spec, and root index.
+- Runtime/test evidence: `tests/test_gemini_image_probe.py`, `tests/test_gemini_batch_probe.py`, `tests/test_cr001_gemini_probe.py`, `tests/test_cr001_batch_integration.py`, and `tests/test_config.py` contain the implementation-facing coverage for `EXP-001-FU-01A` through `EXP-001-FU-01F`.
+
+Final verification:
+
+- `python -m unittest discover -s tests`
+- `git diff --check`
+- Traceability search for `EXP-001-FU-01` across root spec, parent spec, formal spec, raw backlog, README/index files, source, and tests.
+
+Notes:
+
+- Single-image commands classify provider errors but do not retry automatically.
+- Batch delay retry remains config-disabled by default.
+- CR-001 native semantic artifacts remain separate from provider/runtime metadata.
+- V1 batch reports expose retryability through `retryable`, `retryable_batch_indexes`, attempt counts, and provider error records; non-retryable provider failures are represented as failed batches/images that are not listed as retryable.
 
 ## Summary
 

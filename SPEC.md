@@ -550,7 +550,7 @@ active work 後，才可進入 implementation 或 atomic decomposition。
 | Item | Status | Detail |
 |---|---|---|
 | `EXP-001` Gemini Image Analysis Extractor | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-001-gemini-image-analysis-extractor.md`](specs/backlog/EXP-001-gemini-image-analysis-extractor.md) |
-| `EXP-001-FU-01` Retryable Provider Error Handling | DA-reviewed atomic decomposition; ready for Step 5 test design | [`specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md`](specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md) |
+| `EXP-001-FU-01` Retryable Provider Error Handling | Implemented v1; provider retry handling and final traceability readback complete | [`specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md`](specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md) |
 | `EXP-002` Phase 0 Batch Reference Image Analysis | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-002-phase0-batch-reference-image-analysis.md`](specs/backlog/EXP-002-phase0-batch-reference-image-analysis.md) |
 | `EXP-003` Colab Notebook Wrapper for Phase 0 | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-003-colab-notebook-wrapper-for-phase0.md`](specs/backlog/EXP-003-colab-notebook-wrapper-for-phase0.md) |
 | `CR-001` Appeal Point and Art Style Extraction | CR-001 v1 native baseline accepted / frozen; `CR-001-08` deferred pending projection-policy decision | [`specs/backlog/CR-001-appeal-point-and-art-style-extraction.md`](specs/backlog/CR-001-appeal-point-and-art-style-extraction.md) |

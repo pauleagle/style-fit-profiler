@@ -137,6 +137,41 @@ runs/manual-gemini-batch/
 `reference_image_analysis.json`、`style_gene_candidates.json` 與
 `batch_run_report.json`，並以非零 exit code 結束，方便人工檢查與重試。
 
+EXP-001-FU-01 補上 provider error handling v1：
+
+- Single-image probes 會分類 provider error 並 fail fast，不自動 retry。
+- Batch probes 會依 `--max-attempts` 和 config-owned `provider_retry_policy`
+  處理 retryable provider errors；delay retry 預設關閉，因此預設仍是立即重試。
+- `RESOURCE_EXHAUSTED`、`UNAVAILABLE`、`INTERNAL`、`DEADLINE_EXCEEDED` 會被視為 retryable provider failures。
+- `INVALID_ARGUMENT`、auth / permission 類錯誤不會 retry。
+- Runtime provider metadata 只寫入 raw output 或 batch report；CR-001 native semantic artifact 不寫入 `provider_error`。
+
+#### Manual CR-001 Gemini Probe
+
+CR-001 另有 native artifact 專用的手動 probe。它和 legacy Phase 0 Gemini probe 共用
+provider error vocabulary，但輸出 CR-001 native schema。
+
+PowerShell 範例：
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:GEMINI_API_KEY = "<your key>"
+python -m style_fit_profiler.cr001_gemini_probe single reference_images/ref-001.png
+python -m style_fit_profiler.cr001_gemini_probe batch --input-dir reference_images --batch-size 2 --max-attempts 3
+```
+
+常用參數：
+
+```powershell
+python -m style_fit_profiler.cr001_gemini_probe single reference_images/ref-001.png --raw-output runs/manual-cr001-gemini/raw.json
+python -m style_fit_profiler.cr001_gemini_probe batch --run-dir runs/manual-cr001-gemini-batch
+python -m style_fit_profiler.cr001_gemini_probe batch --model gemini-2.5-flash --timeout-seconds 90
+```
+
+CR-001 batch 輸出包含 `phase0/cr001_reference_image_analysis.json` 和
+`phase0/cr001_batch_run_report.json`。前者是 semantic artifact；後者保存 attempt count、
+failed image scope、retryability 和 provider error metadata。
+
 安全注意事項：
 
 - `GEMINI_API_KEY` 只放在環境變數，不寫入 repo、README、SPEC、config 或 commit。
