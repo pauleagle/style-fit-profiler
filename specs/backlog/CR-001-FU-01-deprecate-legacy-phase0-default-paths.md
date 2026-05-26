@@ -24,7 +24,7 @@ related_items:
   - EXP-001
   - EXP-002
 workflow_step: Step 4 - Atomic Decomposition
-next_workflow_step: Start CR-001-FU-01C Root Phase 0 contract wording cleanup
+next_workflow_step: Start CR-001-FU-01D Legacy prompt/schema and planning-doc wording cleanup
 ```
 
 ## Parent Trace
@@ -104,10 +104,12 @@ DA resolution notes:
 - `CR-001-FU-01A` traceability/status sync is already completed by the drill-down
   setup and does not need a separate implementation slice unless links drift.
 - `CR-001-FU-01B` README manual command docs cleanup is complete.
-- The next actionable slice is `CR-001-FU-01C`, which should clarify root
-  `SPEC.md` without rewriting the deterministic v0.1.0 Phase 0 baseline.
-- `CR-001-FU-01D` should handle older EXP / notebook / raw backlog wording after
-  README and root `SPEC.md` are stable.
+- `CR-001-FU-01C` root `SPEC.md` contract wording cleanup is complete; it
+  separates deterministic v0.1.0 `style_gene_candidates.json` baseline from
+  CR-001 manual Gemini native defaults without rewriting accepted Phase 0
+  behavior.
+- The next actionable slice is `CR-001-FU-01D`, which should handle older EXP /
+  notebook / raw backlog wording now that README and root `SPEC.md` are stable.
 
 ## Required Behavior
 
@@ -161,8 +163,8 @@ be executed one at a time and checkpointed before moving to the next item.
 |---|---|---|---|
 | `CR-001-FU-01A` | completed-by-drill-down-setup | Traceability and status sync | Raw backlog, formal follow-up spec, parent CR-001 spec, root index, and backlog index now trace to one another. Reopen only if links drift. |
 | `CR-001-FU-01B` | completed | README manual command docs cleanup | README examples now state that default single/batch commands produce CR-001 native artifacts, and legacy-only `--raw` / `--prompt-file` examples include `--backend legacy`. |
-| `CR-001-FU-01C` | next | Root Phase 0 contract wording | Separate deterministic v0.1.0 `style_gene_candidates.json` baseline from CR-001 native manual Gemini defaults. Do not rewrite accepted deterministic Phase 0 behavior. |
-| `CR-001-FU-01D` | pending | Legacy prompt/schema and planning-doc wording | Review EXP-001 / EXP-002 / EXP-003, notebook docs, and raw backlog future examples. Label compatibility behavior without promising non-existent flags. |
+| `CR-001-FU-01C` | completed | Root Phase 0 contract wording | Root `SPEC.md` now separates deterministic v0.1.0 `style_gene_candidates.json` baseline from CR-001 native manual Gemini defaults without rewriting accepted deterministic Phase 0 behavior. |
+| `CR-001-FU-01D` | next | Legacy prompt/schema and planning-doc wording | Review EXP-001 / EXP-002 / EXP-003, notebook docs, and raw backlog future examples. Label compatibility behavior without promising non-existent flags. |
 | `CR-001-FU-01E` | pending | Default behavior regression verification | Preserve existing tests for CR-001 default single/batch commands, no default legacy output, and explicit `--backend legacy` opt-in; add tests only if cleanup changes behavior. |
 | `CR-001-FU-01F` | conditional | Import-order smoke coverage | Add or run lightweight `python -m` smoke coverage only if import graph code changes or warnings reappear. |
 
@@ -195,7 +197,7 @@ Minimum validation for spec-only edits:
 
 ## Handoff
 
-Next recommended step: start `CR-001-FU-01C` root Phase 0 contract wording
-cleanup. Do not start projection work or add new legacy CLI aliases as part of
-this follow-up unless a later accepted spec explicitly changes the projection
-policy.
+Next recommended step: start `CR-001-FU-01D` legacy prompt/schema and
+planning-doc wording cleanup. Do not start projection work or add new legacy CLI
+aliases as part of this follow-up unless a later accepted spec explicitly
+changes the projection policy.

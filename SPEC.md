@@ -22,6 +22,15 @@ Style Fit Profiler 的目標，是讓使用者透過一輪又一輪的候選圖�
 圖片抽取候選風格基因。Phase 0 的輸出不是最終風格定義，而是 Phase 1 初始
 gene pool 的 bootstrap 來源。
 
+Phase 0 有兩層 artifact boundary：
+
+- `v0.1.0` deterministic / mock-friendly baseline 仍以
+  `phase0/style_gene_candidates.json` 表達三面向候選風格基因。
+- CR-001 manual Gemini default paths 以
+  `phase0/cr001_reference_image_analysis.json` 作為 CR-001 native primary artifact；
+  legacy `style_gene_candidates.json` projection 只可作為 explicit compatibility
+  path，且不得被描述為 CR-001 primary output。
+
 長期版本會包含資料集整理、LoRA 匯出、LoRA 訓練與驗證。`v0.1.0` 只定義最小
 可用的互動式探索流程，重點是收集偏好、保留可追蹤紀錄，並把入選圖片整理成
 早期 LoRA dataset 需要的輸出格式。
@@ -180,6 +189,8 @@ optionally extract candidate genes from reference images
 
 當 `reference_image_analysis_policy.enabled` 為 `true` 時，系統會從
 `reference_image_analysis_policy.input_dir` 讀取既有圖片，抽取候選風格基因。
+本節定義 deterministic v0.1.0 Phase 0 baseline，不取代 CR-001 manual Gemini
+default artifact contract。
 
 Phase 0 必須把候選基因分成三個面向：
 
@@ -190,8 +201,14 @@ Phase 0 必須把候選基因分成三個面向：
 3. 材質與雜訊（Texture & Artifacts）
    - 例如紙張顆粒、膠片顆粒、halftone、壓縮痕跡、掃描感、筆刷紋理、數位雜訊。
 
-Phase 0 應產生 `style_gene_candidates.json`，但不應直接覆蓋
-`style_gene_pool.json`。使用者或後續流程必須能先檢查、刪改或合併候選 genes。
+Deterministic v0.1.0 Phase 0 baseline 應產生 `style_gene_candidates.json`，
+但不應直接覆蓋 `style_gene_pool.json`。使用者或後續流程必須能先檢查、刪改或
+合併候選 genes。
+
+CR-001 manual Gemini default paths 不使用本段的三面向 candidate schema 作為 primary
+artifact；它們的 primary artifact 是 `phase0/cr001_reference_image_analysis.json`。
+若未來需要從 CR-001 native artifact 產生 `style_gene_candidates.json`，必須經由
+explicit compatibility projection，且遵守 deferred `CR-001-08` projection policy。
 
 候選基因輸出格式：
 
@@ -262,7 +279,7 @@ runs/
    ├─ run_manifest.json
    ├─ phase0/                         # only when Phase 0 enabled
    │  ├─ reference_image_manifest.json
-   │  └─ style_gene_candidates.json
+   │  └─ style_gene_candidates.json    # deterministic v0.1.0 Phase 0 baseline
    ├─ generations.jsonl
    ├─ selections.jsonl
    ├─ candidates/
@@ -281,7 +298,11 @@ runs/
 
 - `run_manifest.json` 記錄 config hash、gene pool hash、run ID、run start time、backend type 與 spec version。
 - 若啟用 Phase 0，`phase0/reference_image_manifest.json` 記錄 reference image path、file hash、image size 與分析狀態。
-- 若啟用 Phase 0，`phase0/style_gene_candidates.json` 記錄從 reference images 抽取出的候選風格基因。
+- 若啟用 deterministic v0.1.0 Phase 0 baseline，`phase0/style_gene_candidates.json`
+  記錄從 reference images 抽取出的候選風格基因。
+- 若執行 CR-001 manual Gemini default paths，CR-001 primary artifact 是
+  `phase0/cr001_reference_image_analysis.json`；legacy `style_gene_candidates.json`
+  projection 只能是 explicit compatibility output。
 - `generations.jsonl` 以 append-only 方式記錄每個完成的 generation event。
 - `selections.jsonl` 以 append-only 方式記錄每一代的 selected 與 rejected candidate IDs。
 - 每個 candidate metadata file 記錄 candidate ID、generation index、prompt text、gene IDs、seed、backend payload、image path 與 status。
@@ -349,10 +370,15 @@ runs/
 ### AC-01A: Optional Phase 0 reference image analysis
 
 給定 `reference_image_analysis_policy.enabled = true` 與有效 reference images，
-profiler 必須產生 `phase0/reference_image_manifest.json` 與
-`phase0/style_gene_candidates.json`。候選 genes 必須被分入 `rendering`、
-`color_light`、`texture_artifacts` 三個面向，且每個候選 gene 都能追溯到至少
-一張 reference image。
+deterministic v0.1.0 Phase 0 baseline 必須產生
+`phase0/reference_image_manifest.json` 與 `phase0/style_gene_candidates.json`。
+候選 genes 必須被分入 `rendering`、`color_light`、`texture_artifacts` 三個面向，
+且每個候選 gene 都能追溯到至少一張 reference image。
+
+CR-001 manual Gemini default paths 的 acceptance criteria 屬於
+[`CR-001-FU-01`](specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md)：
+default single/batch manual commands must produce CR-001 native artifacts, not
+legacy three-aspect `style_gene_candidates.json`.
 
 ### AC-02: Candidate generation
 
@@ -554,7 +580,7 @@ active work 後，才可進入 implementation 或 atomic decomposition。
 | `EXP-002` Phase 0 Batch Reference Image Analysis | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-002-phase0-batch-reference-image-analysis.md`](specs/backlog/EXP-002-phase0-batch-reference-image-analysis.md) |
 | `EXP-003` Colab Notebook Wrapper for Phase 0 | Post-P0 experimental; opt-in helper work completed | [`specs/backlog/EXP-003-colab-notebook-wrapper-for-phase0.md`](specs/backlog/EXP-003-colab-notebook-wrapper-for-phase0.md) |
 | `CR-001` Appeal Point and Art Style Extraction | CR-001 v1 native baseline accepted / frozen; `CR-001-08` deferred pending projection-policy decision | [`specs/backlog/CR-001-appeal-point-and-art-style-extraction.md`](specs/backlog/CR-001-appeal-point-and-art-style-extraction.md) |
-| `CR-001-FU-01` Deprecate Legacy Phase 0 Default Paths | In progress; README manual command docs cleanup completed; next `CR-001-FU-01C` | [`specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) |
+| `CR-001-FU-01` Deprecate Legacy Phase 0 Default Paths | In progress; root Phase 0 contract wording completed; next `CR-001-FU-01D` | [`specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) |
 
 ## Testing Implications
 

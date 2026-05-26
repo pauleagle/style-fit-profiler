@@ -18,7 +18,7 @@ formal_spec_path: specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-pat
 parent_spec_path: specs/backlog/CR-001-appeal-point-and-art-style-extraction.md
 root_spec_path: SPEC.md
 workflow_step: Step 4 - Atomic Decomposition
-next_workflow_step: Start CR-001-FU-01C Root Phase 0 contract wording cleanup
+next_workflow_step: Start CR-001-FU-01D Legacy prompt/schema and planning-doc wording cleanup
 ```
 
 ## Drill-down Status
@@ -26,8 +26,9 @@ next_workflow_step: Start CR-001-FU-01C Root Phase 0 contract wording cleanup
 Formal spec：[`specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](../specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md)
 
 Current status：Devil's Advocate review complete；atomic cleanup in progress.
-`CR-001-FU-01B` README manual command docs cleanup is complete；next remaining
-slice：`CR-001-FU-01C`.
+`CR-001-FU-01B` README manual command docs cleanup is complete；`CR-001-FU-01C`
+root Phase 0 contract wording cleanup is complete；next remaining slice：
+`CR-001-FU-01D`.
 
 ## Summary
 
