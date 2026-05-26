@@ -19,7 +19,12 @@ from .cr001 import (
     run_cr001_batch_extraction,
     write_cr001_native_artifact_document,
 )
-from .gemini_image_probe import DEFAULT_MODEL, DEFAULT_TIMEOUT_SECONDS
+from .gemini_image_probe import (
+    DEFAULT_MODEL,
+    DEFAULT_TIMEOUT_SECONDS,
+    classify_gemini_provider_error,
+    gemini_provider_error_to_json_record,
+)
 from .phase0 import (
     DEFAULT_PHASE0_BATCH_MAX_ATTEMPTS,
     build_reference_image_manifest_records,
@@ -49,6 +54,7 @@ class CR001SingleProbeResult:
     model: str | None = None
     raw_response_path: str | None = None
     error: str | None = None
+    provider_error: Mapping[str, Any] | None = None
 
     @property
     def has_failed_images(self) -> bool:
@@ -63,6 +69,11 @@ class CR001SingleProbeResult:
             "model": self.model,
             "raw_response_path": self.raw_response_path,
             "error": self.error,
+            "provider_error": (
+                dict(self.provider_error)
+                if self.provider_error is not None
+                else None
+            ),
         }
 
 
@@ -112,10 +123,43 @@ def run_cr001_single_probe(
         client=client,
         model=model,
     )
-    extraction_result = extract_cr001_single_image_record(
-        reference_image_manifest_record=reference_image_manifest_records[0],
-        raw_extractor=extractor,
-    )
+    try:
+        extraction_result = extract_cr001_single_image_record(
+            reference_image_manifest_record=reference_image_manifest_records[0],
+            raw_extractor=extractor,
+        )
+    except Exception as error:
+        provider_error = gemini_provider_error_to_json_record(
+            classify_gemini_provider_error(error)
+        )
+        raw_response_path = None
+        if raw_output is not None:
+            raw_response_path = _write_raw_response_record(
+                run_dir=run_dir,
+                raw_output=raw_output,
+                document={
+                    "source_image": source_image,
+                    "model": model,
+                    "response_text": None,
+                    "valid": False,
+                    "error": str(error),
+                    "provider_error": provider_error,
+                },
+            )
+        native_artifact_path = write_cr001_native_artifact_document(
+            run_dir=run_dir,
+            artifact_document=build_cr001_native_artifact_document([]),
+        )
+        return CR001SingleProbeResult(
+            reference_image_manifest_path=reference_image_manifest_path,
+            native_artifact_path=native_artifact_path,
+            source_image=source_image,
+            valid=False,
+            model=model,
+            raw_response_path=raw_response_path,
+            error=str(error),
+            provider_error=provider_error,
+        )
 
     raw_response_path = None
     if raw_output is not None and extraction_result.raw_response_text is not None:

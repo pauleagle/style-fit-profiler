@@ -118,6 +118,19 @@ class GeminiProviderError:
     provider_http_status: int | None = None
 
 
+def gemini_provider_error_to_json_record(
+    provider_error: GeminiProviderError,
+) -> dict[str, Any]:
+    return {
+        "type": provider_error.type,
+        "provider_status": provider_error.provider_status,
+        "retryable": provider_error.retryable,
+        "message": provider_error.message,
+        "retry_after_seconds": provider_error.retry_after_seconds,
+        "provider_http_status": provider_error.provider_http_status,
+    }
+
+
 @dataclass(frozen=True)
 class ProviderRetryDecision:
     """Retry and optional wait decision for provider runtime errors."""
@@ -943,7 +956,18 @@ def main(argv: list[str] | None = None) -> int:
         prompt=prompt,
         timeout_seconds=args.timeout_seconds,
     )
-    response = client.generate_content_response(args.image_path)
+    try:
+        response = client.generate_content_response(args.image_path)
+    except GeminiImageProbeError as error:
+        diagnostic = _build_single_provider_error_diagnostic(error)
+        if args.raw_output is not None:
+            args.raw_output.parent.mkdir(parents=True, exist_ok=True)
+            args.raw_output.write_text(
+                json.dumps(diagnostic, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        print(json.dumps(diagnostic, ensure_ascii=False, indent=2))
+        return 1
 
     if args.raw_output is not None:
         args.raw_output.parent.mkdir(parents=True, exist_ok=True)
@@ -958,6 +982,15 @@ def main(argv: list[str] | None = None) -> int:
         print(extract_response_text(response))
 
     return 0
+
+
+def _build_single_provider_error_diagnostic(error: GeminiImageProbeError) -> dict[str, Any]:
+    provider_error = classify_gemini_provider_error(error)
+    return {
+        "valid": False,
+        "error": str(error),
+        "provider_error": gemini_provider_error_to_json_record(provider_error),
+    }
 
 
 def _resolve_run_dir(*, project_root: Path, run_dir: Path) -> Path:

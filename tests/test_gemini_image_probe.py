@@ -1109,6 +1109,52 @@ class GeminiManualIntegrationCommandTests(unittest.TestCase):
         self.assertIn('"rendering"', stdout.getvalue())
         self.assertIn("candidates", raw_record)
 
+    def test_exp_001_fu_01d_legacy_single_classifies_provider_error_without_retry(self):
+        calls = []
+
+        class FakeClient:
+            def __init__(self, *, api_key, model, prompt, timeout_seconds):
+                pass
+
+            def generate_content_response(self, image_path):
+                calls.append(image_path)
+                raise GeminiImageProbeError(
+                    'Gemini API HTTP 429: {"error":{"code":429,'
+                    '"status":"RESOURCE_EXHAUSTED",'
+                    '"message":"Quota exceeded. Please retry in 5s."}}'
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            raw_output = Path(temp_dir) / "runs" / "provider-error.json"
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}, clear=True),
+                patch("style_fit_profiler.gemini_image_probe.GeminiImageAnalysisClient", FakeClient),
+                redirect_stdout(io.StringIO()) as stdout,
+            ):
+                result = main(
+                    [
+                        "--backend",
+                        "legacy",
+                        "reference_images/ref-001.png",
+                        "--raw-output",
+                        str(raw_output),
+                    ]
+                )
+
+            stdout_record = json.loads(stdout.getvalue())
+            raw_record = json.loads(raw_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 1)
+        self.assertEqual(calls, [Path("reference_images/ref-001.png")])
+        self.assertFalse(stdout_record["valid"])
+        self.assertEqual(
+            stdout_record["provider_error"]["type"],
+            "provider_quota_exhausted",
+        )
+        self.assertTrue(stdout_record["provider_error"]["retryable"])
+        self.assertEqual(stdout_record["provider_error"]["retry_after_seconds"], 5.0)
+        self.assertEqual(raw_record["provider_error"], stdout_record["provider_error"])
+
 
 if __name__ == "__main__":
     unittest.main()

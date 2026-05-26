@@ -20,6 +20,7 @@ from style_fit_profiler.cr001_gemini_probe import (  # noqa: E402
     main,
     parse_args,
 )
+from style_fit_profiler.gemini_image_probe import GeminiImageProbeError  # noqa: E402
 
 
 CR001_FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "cr001"
@@ -251,6 +252,68 @@ class CR001GeminiProbeCommandTests(unittest.TestCase):
         self.assertFalse(stdout_record["valid"])
         self.assertIn("invalid CR-001 raw JSON", stdout_record["error"])
         self.assertEqual(artifact["records"], [])
+
+    def test_exp_001_fu_01d_single_classifies_provider_error_without_retry(self):
+        calls = []
+
+        class FakeClient:
+            def __init__(self, *, api_key, model, timeout_seconds):
+                self.model = model
+
+            def analyze_image(self, *, image_path, source_image):
+                calls.append(("analyze_image", image_path.name, source_image))
+                raise GeminiImageProbeError(
+                    'Gemini API HTTP 429: {"error":{"code":429,'
+                    '"status":"RESOURCE_EXHAUSTED",'
+                    '"message":"Quota exceeded. Please retry in 5s."}}'
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            reference_dir = project_root / "reference_images"
+            run_dir = project_root / "runs" / "cr001-single"
+            reference_dir.mkdir()
+            (reference_dir / "ref-001.png").write_bytes(
+                _png_header_bytes(width=2, height=3)
+            )
+
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}, clear=True),
+                patch("style_fit_profiler.cr001_gemini_probe.CR001GeminiAnalysisClient", FakeClient),
+                redirect_stdout(io.StringIO()) as stdout,
+            ):
+                result = main(
+                    [
+                        "single",
+                        "reference_images/ref-001.png",
+                        "--project-root",
+                        str(project_root),
+                        "--run-dir",
+                        str(run_dir),
+                    ]
+                )
+
+            stdout_record = json.loads(stdout.getvalue())
+            artifact = json.loads(
+                (run_dir / "phase0" / "cr001_reference_image_analysis.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(result, 1)
+        self.assertEqual(
+            calls,
+            [("analyze_image", "ref-001.png", "reference_images/ref-001.png")],
+        )
+        self.assertFalse(stdout_record["valid"])
+        self.assertEqual(
+            stdout_record["provider_error"]["type"],
+            "provider_quota_exhausted",
+        )
+        self.assertEqual(stdout_record["provider_error"]["provider_status"], "RESOURCE_EXHAUSTED")
+        self.assertEqual(stdout_record["provider_error"]["retry_after_seconds"], 5.0)
+        self.assertEqual(artifact["records"], [])
+        self.assertNotIn("provider_error", artifact)
 
     def test_batch_command_writes_manifest_native_artifact_and_batch_report_only(self):
         calls = []
