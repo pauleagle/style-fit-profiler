@@ -109,7 +109,7 @@ Follow-ups：
 
 | ID | Status | Spec | Source | Reason | Blocks parent completion |
 |---|---|---|---|---|---|
-| `EXP-001-FU-01` | ready-for-atomic-decomposition | [EXP-001-FU-01-retryable-provider-error-handling.md](EXP-001-FU-01-retryable-provider-error-handling.md) | [../../backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md](../../backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md) | Gemini / batch runtime needs explicit retryable provider error handling and machine-readable attempt metadata. | No for completed EXP-001 helper work; yes before treating provider-backed batch execution as reliability-hardened. |
+| `EXP-001-FU-01` | ready-for-step-5-test-design | [EXP-001-FU-01-retryable-provider-error-handling.md](EXP-001-FU-01-retryable-provider-error-handling.md) | [../../backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md](../../backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md) | Gemini / batch runtime needs explicit retryable provider error handling and machine-readable attempt metadata. Atomic decomposition is DA-reviewed. | No for completed EXP-001 helper work; yes before treating provider-backed batch execution as reliability-hardened. |
 
 Open questions：
 

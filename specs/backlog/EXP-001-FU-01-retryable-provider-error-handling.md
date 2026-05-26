@@ -8,7 +8,8 @@ item_type: follow-up
 parent_type: EXP
 parent_id: EXP-001
 status: proposed
-drill_down_status: ready-for-atomic-decomposition
+drill_down_status: complete
+atomic_decomposition_status: da-reviewed
 title: Retryable provider error handling
 source_path: backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md
 parent_spec_path: specs/backlog/EXP-001-gemini-image-analysis-extractor.md
@@ -16,8 +17,9 @@ root_spec_path: SPEC.md
 related_items:
   - EXP-002
   - CR-001
-integration_status: ready-for-atomic-decomposition
-workflow_step: Step 4.5 - Workflow Decomposition / Atomic Work Items
+integration_status: ready-for-step-5-test-design
+workflow_step: Step 5 - Spec-Based Test Design
+next_atomic_item: EXP-001-FU-01A
 ```
 
 ## Parent Trace
@@ -33,7 +35,7 @@ This follow-up does not reopen the completed EXP-001 helper work. It blocks only
 
 Gate status: `pass`
 
-Reason: human decisions have resolved the retry layer boundary, single-image coverage, and delay retry policy. The next step is to finalize accepted atomic items before implementation.
+Reason: human decisions have resolved the retry layer boundary, single-image coverage, and delay retry policy. Atomic items have been decomposed and DA-reviewed; the next step is Step 5 test design for `EXP-001-FU-01A`.
 
 Current code evidence:
 
@@ -63,25 +65,169 @@ Resolved human decisions:
 3. Existing retry attempt count behavior is preserved.
 4. Delay retry count and max total delay are config-owned defaults, not runner-local magic numbers.
 
-### Proposed Atomic Split After Gate Pass
+## Atomic Decomposition
 
-Draft atomic items, not yet accepted:
+Status: `da-reviewed`
 
-- `EXP-001-FU-01A`: Provider error classifier and Gemini retry-delay parser.
-  - Scope: pure helper functions / types; no command behavior change.
-  - Tests: classify `RESOURCE_EXHAUSTED`, auth/config errors, transient provider statuses, unknown errors, and retry-delay parsing.
-- `EXP-001-FU-01B`: Retry policy and delay resolver.
-  - Scope: config-owned policy object, bounded delay calculation, and optional injected sleeper contract.
-  - Tests: preserved max attempts, delay disabled default, delay retry count, max total delay, retry buffer, max single delay, no-op sleeper, non-retryable errors.
-- `EXP-001-FU-01C`: Legacy batch provider-error integration.
-  - Scope: `gemini_batch_probe` / EXP batch report metadata; no delay by default.
-  - Tests: simulated provider quota error followed by success; exhausted provider quota error; non-retryable provider error; delay disabled preserves immediate retry; delay enabled uses injected sleeper.
-- `EXP-001-FU-01D`: CR-001 batch provider-error integration.
-  - Scope: CR-001 batch run report provider metadata while keeping native artifact clean; no delay by default.
-  - Tests: partial valid native records, failed provider metadata, retryable failed-image scope, delay policy read from config.
-- `EXP-001-FU-01E`: Manual command docs and final traceability update.
-  - Scope: README / spec notes for retry policy, no secrets, no real API tests.
-  - Tests: documentation-only validation plus full unit suite if code changed.
+Implementation rule:
+
+- Implement items in order unless a later human decision explicitly changes the order.
+- Each item must keep `spec_refs` pointing to both `EXP-001-FU-01` and parent `EXP-001`.
+- No item may call the real Gemini API in unit tests.
+- No item may add real sleeps to tests; delay behavior must use deterministic calculation or an injected sleeper.
+- Batch delay retry remains disabled by default until config explicitly enables it.
+
+| ID | Status | Workflow step | Scope | Dependencies | Primary tests |
+|---|---|---|---|---|---|
+| `EXP-001-FU-01A` | accepted | Step 5 - Spec-Based Test Design | Provider error model, classifier, and Gemini retry-delay parser. No command behavior change. | None | Classification fixtures for `RESOURCE_EXHAUSTED`, transient statuses, auth/config failures, unknown errors, and `Please retry in ...s` parsing. |
+| `EXP-001-FU-01B` | accepted | Step 5 - Spec-Based Test Design | Config-owned provider retry policy defaults and validation under `reference_image_analysis_policy.provider_retry_policy`. Preserve existing `max_attempts` semantics. | `EXP-001-FU-01A` only for shared types if needed | Config load/default tests, invalid policy values, delay retry disabled default, `delay_retry_times=2`, `max_total_delay_seconds=120`, and CLI override precedence where a command already exposes retry flags. |
+| `EXP-001-FU-01C` | accepted | Step 5 - Spec-Based Test Design | Retry decision and delay resolver, including `should_retry`, bounded delay calculation, delay retry budget, total-delay cap, and injected sleeper contract. No batch command integration yet. | `EXP-001-FU-01A`, `EXP-001-FU-01B` | Attempt budget tests, non-retryable failure tests, `max_attempts - 1` delay cap, `max_single_delay_seconds`, `max_total_delay_seconds`, buffer application only when delay enabled, and no-op injected sleeper calls. |
+| `EXP-001-FU-01D` | accepted | Step 5 - Spec-Based Test Design | Single-image command diagnostics for legacy `gemini_image_probe` and CR-001 `cr001_gemini_probe single`: classify provider failures and fail fast without automatic retry. | `EXP-001-FU-01A`, optionally `EXP-001-FU-01B` for display policy | Simulated provider quota/auth errors prove single commands do not retry, return non-zero, and surface machine-readable provider metadata or clear diagnostic output without writing misleading semantic artifacts. |
+| `EXP-001-FU-01E` | accepted | Step 5 - Spec-Based Test Design | Legacy EXP / Phase 0 batch integration for `gemini_batch_probe` and related batch report metadata. Delay retry stays off by default. | `EXP-001-FU-01A` through `EXP-001-FU-01C` | Quota error followed by success, exhausted quota error, non-retryable provider error, delay disabled immediate retry, delay enabled injected sleeper, partial output preservation, and summary retry counts. |
+| `EXP-001-FU-01F` | accepted | Step 5 - Spec-Based Test Design | CR-001 batch integration for `cr001_gemini_probe batch` / `run_cr001_batch_extraction`, keeping CR-001 native semantic artifact clean while adding provider metadata to runtime report. | `EXP-001-FU-01A` through `EXP-001-FU-01C`; can reuse batch helpers from `EXP-001-FU-01E` | Failed-image scope retry, valid native records preserved, failed provider metadata in CR-001 batch report, no runtime fields inside native records, delay policy read from config, and non-retryable failures excluded from retry scope. |
+| `EXP-001-FU-01G` | accepted | Step 5 - Spec-Based Test Design | Manual command docs, README / spec traceability, and final verification notes. No code behavior ownership. | `EXP-001-FU-01A` through `EXP-001-FU-01F` | Documentation readback, traceability search for parent/follow-up IDs, `git diff --check`, and full unit suite if any code changed in the previous items. |
+
+### Item Notes
+
+#### `EXP-001-FU-01A`: Provider Error Classifier
+
+Purpose:
+
+- Create the shared runtime vocabulary for provider failures before any command behavior changes.
+- Keep parser/schema output retries separate from provider transport/runtime retries.
+
+Non-goals:
+
+- No config loading.
+- No retry loop.
+- No command output changes.
+
+Completion signal:
+
+- Provider status, retryability, retry delay, and diagnostic message can be represented as deterministic in-memory data.
+
+#### `EXP-001-FU-01B`: Config-Owned Retry Policy
+
+Purpose:
+
+- Move retry policy defaults into `style_profiler_config.json` under `reference_image_analysis_policy.provider_retry_policy`.
+- Preserve existing command-facing `max_attempts` behavior while preventing new delay-related magic numbers in runner code.
+
+Non-goals:
+
+- No sleeping.
+- No batch report changes.
+- No provider call retry loop.
+
+Completion signal:
+
+- Config defaults and validation can produce a retry policy object with no provider call involved.
+
+#### `EXP-001-FU-01C`: Retry Decision And Delay Resolver
+
+Purpose:
+
+- Centralize retry decisions and delay calculation so legacy EXP batch and CR-001 batch do not reimplement the same policy.
+- Provide an injected sleeper contract for later integration tests without real waiting.
+
+Non-goals:
+
+- No direct CLI changes.
+- No report serialization ownership.
+
+Completion signal:
+
+- A retryable provider error plus policy can produce deterministic retry/no-retry and optional wait decisions.
+
+#### `EXP-001-FU-01D`: Single-Image Fail-Fast Diagnostics
+
+Purpose:
+
+- Make the human decision "single does not retry" testable and visible.
+- Prevent single-image commands from silently inheriting batch retry loops.
+
+Non-goals:
+
+- No automatic retry for single-image commands.
+- No batch summary fields.
+
+Completion signal:
+
+- A simulated provider failure in a single-image command is classified, reported, and exits without a second provider call.
+
+#### `EXP-001-FU-01E`: Legacy Batch Integration
+
+Purpose:
+
+- Apply provider retry classification and policy to the existing EXP / Phase 0 batch flow.
+- Preserve immediate retry behavior by default while adding structured provider metadata.
+
+Non-goals:
+
+- No CR-001 native artifact changes.
+- No global scheduler or resumable batch state.
+
+Completion signal:
+
+- Legacy batch reports distinguish retryable provider failures from invalid model output and non-retryable provider failures.
+
+#### `EXP-001-FU-01F`: CR-001 Batch Integration
+
+Purpose:
+
+- Add provider retry behavior to the CR-001 batch runtime without polluting CR-001 native semantic records.
+- Preserve valid native records when a provider-backed batch partially fails.
+
+Non-goals:
+
+- No CR-001 schema redesign.
+- No Phase 0 projection policy change.
+
+Completion signal:
+
+- CR-001 batch report carries provider retry metadata, while `phase0/cr001_reference_image_analysis.json` remains semantic-only.
+
+#### `EXP-001-FU-01G`: Docs And Traceability
+
+Purpose:
+
+- Close the follow-up loop across raw backlog, formal spec, parent EXP spec, root `SPEC.md`, README/index files, and tests.
+
+Non-goals:
+
+- No new runtime behavior.
+- No real API validation requirement.
+
+Completion signal:
+
+- The follow-up can be traced from root index to parent spec to formal spec to raw backlog and back.
+
+## Devil's Advocate Review Of Atomic Decomposition
+
+Review status: `pass-after-revision`
+
+Conclusion:
+
+- The initial five-item draft was directionally correct, but it hid two high-risk boundaries: config-vs-delay ownership and single-image fail-fast behavior.
+- The revised seven-item split is accepted for Step 5 test design because each item has a bounded owner, explicit non-goals, and a test surface that can run without real Gemini calls or real waits.
+- Implementation must start with `EXP-001-FU-01A`; batch integrations must not begin before the shared classifier, config policy, and retry resolver are test-covered.
+
+| ID | Severity | Issue | Resolution | Blocks Step 5 |
+|---|---|---|---|---|
+| `DA-EXP-001-FU-01-001` | High | The original `Retry policy and delay resolver` item mixed config schema, default ownership, retry decision logic, delay calculation, and sleeper behavior. | Split into `EXP-001-FU-01B` for config-owned policy and `EXP-001-FU-01C` for retry decision / delay resolver / injected sleeper. | No |
+| `DA-EXP-001-FU-01-002` | High | The original split did not give `single 不 retry` its own implementation/test slice, making it easy for single commands to accidentally inherit batch retry behavior. | Added `EXP-001-FU-01D` as an explicit single-image fail-fast diagnostics item covering legacy and CR-001 single commands. | No |
+| `DA-EXP-001-FU-01-003` | Medium | Legacy EXP batch and CR-001 batch integration could duplicate retry classification and drift in report semantics. | Shared behavior is locked into `EXP-001-FU-01A` through `EXP-001-FU-01C`; `EXP-001-FU-01E` and `EXP-001-FU-01F` are adapter/report integration slices only. | No |
+| `DA-EXP-001-FU-01-004` | Medium | Delay retry can make tests slow/flaky or unexpectedly sleep during manual runs. | Delay retry remains config-disabled by default; `EXP-001-FU-01C` owns injected sleeper behavior and tests must use no-op sleepers. | No |
+| `DA-EXP-001-FU-01-005` | Medium | CR-001 runtime metadata could leak into the CR-001 native semantic artifact. | `EXP-001-FU-01F` explicitly limits provider metadata to the CR-001 batch report and forbids runtime fields inside native records. | No |
+| `DA-EXP-001-FU-01-006` | Low | The docs/final traceability item could become a dumping ground for unfinished implementation gaps. | `EXP-001-FU-01G` is documentation and traceability only; any behavior gap found there must reopen the relevant earlier item, not be fixed in docs. | No |
+
+Open questions before implementation:
+
+- None. All DA findings above are resolved by the revised split.
+
+Next workflow step:
+
+- Begin Step 5 test design for `EXP-001-FU-01A`.
 
 ## Summary
 

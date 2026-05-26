@@ -8,7 +8,8 @@ item_type: follow-up
 parent_type: EXP
 parent_id: EXP-001
 status: proposed
-drill_down_status: ready-for-atomic-decomposition
+drill_down_status: complete
+atomic_decomposition_status: da-reviewed
 title: Add retryable provider error handling
 source_role: working-draft
 formal_spec_path: specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md
@@ -17,8 +18,9 @@ root_spec_path: SPEC.md
 related_items:
   - EXP-002
   - CR-001
-integration_status: ready-for-atomic-decomposition
-workflow_step: Step 4.5 - Workflow Decomposition / Atomic Work Items
+integration_status: ready-for-step-5-test-design
+workflow_step: Step 5 - Spec-Based Test Design
+next_atomic_item: EXP-001-FU-01A
 ```
 
 ## Status
@@ -40,6 +42,8 @@ Follow-up / Runtime Infrastructure
 
 Formal spec source: `specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md`.
 
+Atomic decomposition status: `da-reviewed`; next workflow step is Step 5 test design for `EXP-001-FU-01A`.
+
 Current accepted drill-down decisions:
 
 - Single-image commands do not automatically retry provider errors. They may classify provider errors for diagnostics, but should fail fast.
@@ -60,6 +64,16 @@ Current accepted drill-down decisions:
   "jitter_enabled": true
 }
 ```
+
+Accepted atomic split:
+
+- `EXP-001-FU-01A`: Provider error classifier and Gemini retry-delay parser.
+- `EXP-001-FU-01B`: Config-owned provider retry policy defaults and validation.
+- `EXP-001-FU-01C`: Retry decision and delay resolver with injected sleeper contract.
+- `EXP-001-FU-01D`: Single-image fail-fast provider diagnostics.
+- `EXP-001-FU-01E`: Legacy EXP / Phase 0 batch provider-error integration.
+- `EXP-001-FU-01F`: CR-001 batch provider-error integration without native artifact pollution.
+- `EXP-001-FU-01G`: Manual command docs and final traceability update.
 
 This working draft may contain older exploratory wording below; the formal spec path above is the current implementation contract.
 
