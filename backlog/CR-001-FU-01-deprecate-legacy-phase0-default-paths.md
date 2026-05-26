@@ -7,11 +7,26 @@ item_id: CR-001-FU-01
 item_type: follow-up
 parent_cr: CR-001
 title: Deprecate legacy Phase 0 default paths
-status: proposed
+status: da-reviewed
+drill_down_status: complete
+devils_advocate_status: complete
+atomic_decomposition_status: ready-for-atomic-decomposition
 compatibility_policy: compatibility-layer
 primary_baseline: cr001-native-artifact
 legacy_policy: deprecated-explicit-projection
+formal_spec_path: specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md
+parent_spec_path: specs/backlog/CR-001-appeal-point-and-art-style-extraction.md
+root_spec_path: SPEC.md
+workflow_step: Step 4 - Atomic Decomposition
+next_workflow_step: Start CR-001-FU-01B README manual command docs cleanup
 ```
+
+## Drill-down Status
+
+Formal spec：[`specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](../specs/backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md)
+
+Current status：Devil's Advocate review complete；ready for atomic
+decomposition. First remaining slice：`CR-001-FU-01B`.
 
 ## Summary
 

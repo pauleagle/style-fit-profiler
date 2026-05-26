@@ -12,6 +12,10 @@ deferred pending projection-policy decision。
   hair、eye、visual density、world setting 與 appeal archetype 等 Visual Genome
   延伸 loci，並提出 style crossover、mutation、fitness scoring 與 latent
   compression 的長期方向。
+- `backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`：follow-up for
+  CR-001 replacement semantics；將 legacy Phase 0 default paths 降級為 explicit
+  deprecated compatibility behavior，並要求 default manual Gemini paths 使用
+  CR-001 native artifact。
 - `backlog/CR-001-02-loci-expansion-table.md`：整理核心 canonical loci 與 candidate
   extended loci 的雙語 token table；本 spec 以精簡 token registry 形式彙總，不保留
   完整表格版面。
@@ -435,6 +439,12 @@ Implementation progress:
 
   The prior EXP / legacy three-aspect single-image output remains available
   only through `--backend legacy`.
+
+## Follow-ups
+
+| ID | Status | Spec | Source | Reason | Blocks frozen CR-001 v1 native baseline |
+|---|---|---|---|---|---|
+| `CR-001-FU-01` | DA reviewed；ready for atomic decomposition；next `CR-001-FU-01B` | [`CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) | [`../../backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md`](../../backlog/CR-001-FU-01-deprecate-legacy-phase0-default-paths.md) | Deprecate legacy Phase 0 default paths and make CR-001 native artifact the default manual Gemini Phase 0 baseline. | No. It is required before docs and entrypoint defaults can be called migration-clean. |
 
 ## Decision: CR-001 v1 native baseline freeze
 
