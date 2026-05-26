@@ -105,6 +105,12 @@ Candidate experimental atomic items：
   - 每個 batch 以一次 multi-image Gemini request 送出多張 reference images，但回傳後必須逐圖記錄 analysis result，避免 Phase 0 提前整合跨圖 traits。
   - 輸出 `reference_image_manifest.json`、逐圖 `reference_image_analysis.json`、相容投影 `style_gene_candidates.json` 與 `batch_run_report.json`。
 
+Follow-ups：
+
+| ID | Status | Spec | Source | Reason | Blocks parent completion |
+|---|---|---|---|---|---|
+| `EXP-001-FU-01` | ready-for-atomic-decomposition | [EXP-001-FU-01-retryable-provider-error-handling.md](EXP-001-FU-01-retryable-provider-error-handling.md) | [../../backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md](../../backlog/EXP-001-FU-01-Add-retryable-provider-error-handling.md) | Gemini / batch runtime needs explicit retryable provider error handling and machine-readable attempt metadata. | No for completed EXP-001 helper work; yes before treating provider-backed batch execution as reliability-hardened. |
+
 Open questions：
 
 - Gemini extractor 應透過 config 啟用，還是先只提供 CLI/manual command？

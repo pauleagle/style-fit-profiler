@@ -1,17 +1,67 @@
 # EXP-001-FU-01 Add retryable provider error handling
 
+## Metadata
+
+```yaml
+item_id: EXP-001-FU-01
+item_type: follow-up
+parent_type: EXP
+parent_id: EXP-001
+status: proposed
+drill_down_status: ready-for-atomic-decomposition
+title: Add retryable provider error handling
+source_role: working-draft
+formal_spec_path: specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md
+parent_spec_path: specs/backlog/EXP-001-gemini-image-analysis-extractor.md
+root_spec_path: SPEC.md
+related_items:
+  - EXP-002
+  - CR-001
+integration_status: ready-for-atomic-decomposition
+workflow_step: Step 4.5 - Workflow Decomposition / Atomic Work Items
+```
+
 ## Status
 
 Proposed
 
 ## Parent
 
-- EXP-001
+- EXP-001 (`specs/backlog/EXP-001-gemini-image-analysis-extractor.md`)
 - Related: CR-001 runtime execution flow
+- Formal spec: `specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md`
+- Root index: `SPEC.md`
 
 ## Type
 
 Follow-up / Runtime Infrastructure
+
+## Drill-down Decision Update
+
+Formal spec source: `specs/backlog/EXP-001-FU-01-retryable-provider-error-handling.md`.
+
+Current accepted drill-down decisions:
+
+- Single-image commands do not automatically retry provider errors. They may classify provider errors for diagnostics, but should fail fast.
+- Batch commands preserve the existing retry attempt count behavior through `max_attempts`.
+- Batch delay retry is controlled by config and defaults to disabled.
+- Retry policy values are owned by `style_profiler_config.json` under `reference_image_analysis_policy.provider_retry_policy`.
+- Default retry policy values:
+
+```json
+{
+  "max_attempts": 3,
+  "delay_retry_enabled": false,
+  "delay_retry_times": 2,
+  "retry_buffer_seconds": 2,
+  "default_initial_backoff_seconds": 5,
+  "max_single_delay_seconds": 60,
+  "max_total_delay_seconds": 120,
+  "jitter_enabled": true
+}
+```
+
+This working draft may contain older exploratory wording below; the formal spec path above is the current implementation contract.
 
 ## Summary
 
