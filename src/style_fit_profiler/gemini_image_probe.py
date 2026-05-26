@@ -16,6 +16,7 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .config import ProviderRetryPolicy
 from .phase0 import StyleGeneCandidate
 
 
@@ -118,6 +119,17 @@ class GeminiProviderError:
 
 
 @dataclass(frozen=True)
+class ProviderRetryDecision:
+    """Retry and optional wait decision for provider runtime errors."""
+
+    should_retry: bool
+    remaining_attempts: int
+    wait_seconds: float | None = None
+    delay_retry_allowed: bool = False
+    total_delay_after_wait_seconds: float = 0
+
+
+@dataclass(frozen=True)
 class GeminiImageTraitAnalysis:
     """Normalized Gemini trait analysis for one source image."""
 
@@ -174,6 +186,91 @@ def classify_gemini_provider_error(error: object) -> GeminiProviderError:
     )
 
 
+def resolve_provider_retry_decision(
+    *,
+    provider_error: GeminiProviderError,
+    policy: ProviderRetryPolicy,
+    attempt_index: int,
+    total_delay_seconds: float = 0,
+    delay_retry_count: int = 0,
+) -> ProviderRetryDecision:
+    attempt_index = _normalize_positive_int("attempt_index", attempt_index)
+    total_delay_seconds = _normalize_non_negative_number(
+        "total_delay_seconds",
+        total_delay_seconds,
+    )
+    delay_retry_count = _normalize_non_negative_int(
+        "delay_retry_count",
+        delay_retry_count,
+    )
+
+    remaining_attempts = max(policy.max_attempts - attempt_index, 0)
+    if not provider_error.retryable or remaining_attempts < 1:
+        return ProviderRetryDecision(
+            should_retry=False,
+            remaining_attempts=remaining_attempts,
+            total_delay_after_wait_seconds=total_delay_seconds,
+        )
+
+    wait_seconds = _resolve_provider_retry_wait_seconds(
+        provider_error=provider_error,
+        policy=policy,
+        total_delay_seconds=total_delay_seconds,
+        delay_retry_count=delay_retry_count,
+    )
+    return ProviderRetryDecision(
+        should_retry=True,
+        remaining_attempts=remaining_attempts,
+        wait_seconds=wait_seconds,
+        delay_retry_allowed=wait_seconds is not None,
+        total_delay_after_wait_seconds=(
+            total_delay_seconds
+            if wait_seconds is None
+            else total_delay_seconds + wait_seconds
+        ),
+    )
+
+
+def sleep_for_provider_retry_delay(
+    decision: ProviderRetryDecision,
+    *,
+    sleeper: Callable[[float], object],
+) -> None:
+    if decision.wait_seconds is not None and decision.wait_seconds > 0:
+        sleeper(decision.wait_seconds)
+
+
+def _resolve_provider_retry_wait_seconds(
+    *,
+    provider_error: GeminiProviderError,
+    policy: ProviderRetryPolicy,
+    total_delay_seconds: float,
+    delay_retry_count: int,
+) -> float | None:
+    if not policy.delay_retry_enabled:
+        return None
+    if delay_retry_count >= policy.delay_retry_times:
+        return None
+
+    remaining_total_delay_seconds = max(
+        policy.max_total_delay_seconds - total_delay_seconds,
+        0,
+    )
+    if remaining_total_delay_seconds <= 0:
+        return None
+
+    retry_after_seconds = (
+        provider_error.retry_after_seconds
+        if provider_error.retry_after_seconds is not None
+        else policy.default_initial_backoff_seconds
+    )
+    return min(
+        retry_after_seconds + policy.retry_buffer_seconds,
+        policy.max_single_delay_seconds,
+        remaining_total_delay_seconds,
+    )
+
+
 def _gemini_provider_error_payload(error: object) -> Mapping[str, Any]:
     if isinstance(error, Mapping):
         return error
@@ -207,6 +304,24 @@ def _normalize_gemini_provider_http_status(code: Any) -> int | None:
     if isinstance(code, str) and code.strip().isdigit():
         return int(code.strip())
     return None
+
+
+def _normalize_positive_int(field_name: str, value: Any) -> int:
+    if type(value) is not int or value < 1:
+        raise GeminiImageProbeError(f"{field_name} must be a positive integer")
+    return value
+
+
+def _normalize_non_negative_int(field_name: str, value: Any) -> int:
+    if type(value) is not int or value < 0:
+        raise GeminiImageProbeError(f"{field_name} must be a non-negative integer")
+    return value
+
+
+def _normalize_non_negative_number(field_name: str, value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        raise GeminiImageProbeError(f"{field_name} must be a non-negative number")
+    return value
 
 
 def parse_gemini_trait_response(response_text: str) -> dict[str, tuple[str, ...]]:

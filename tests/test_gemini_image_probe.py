@@ -35,8 +35,13 @@ from style_fit_profiler.gemini_image_probe import (  # noqa: E402
     parse_args,
     parse_gemini_batch_trait_response,
     parse_gemini_trait_response,
+    resolve_provider_retry_decision,
+    sleep_for_provider_retry_delay,
 )
-from style_fit_profiler.config import ReferenceImageAnalysisPolicy  # noqa: E402
+from style_fit_profiler.config import (  # noqa: E402
+    ProviderRetryPolicy,
+    ReferenceImageAnalysisPolicy,
+)
 from style_fit_profiler.phase0 import (  # noqa: E402
     build_style_gene_candidates_document,
     run_phase0,
@@ -214,6 +219,170 @@ class GeminiProviderErrorClassificationTests(unittest.TestCase):
     def test_exp_001_fu_01a_retry_delay_parser_returns_none_without_delay(self):
         self.assertIsNone(extract_gemini_retry_after_seconds("Quota exceeded."))
         self.assertIsNone(extract_gemini_retry_after_seconds(""))
+
+
+class ProviderRetryDecisionTests(unittest.TestCase):
+    def test_exp_001_fu_01c_retries_retryable_error_with_remaining_attempts(self):
+        provider_error = classify_gemini_provider_error(
+            {"error": {"status": "UNAVAILABLE", "message": "temporary outage"}}
+        )
+
+        decision = resolve_provider_retry_decision(
+            provider_error=provider_error,
+            policy=ProviderRetryPolicy(max_attempts=3),
+            attempt_index=1,
+        )
+
+        self.assertTrue(decision.should_retry)
+        self.assertEqual(decision.remaining_attempts, 2)
+        self.assertIsNone(decision.wait_seconds)
+        self.assertEqual(decision.total_delay_after_wait_seconds, 0)
+
+    def test_exp_001_fu_01c_does_not_retry_non_retryable_or_exhausted_errors(self):
+        non_retryable_error = classify_gemini_provider_error(
+            {"error": {"status": "INVALID_ARGUMENT", "message": "bad payload"}}
+        )
+        retryable_error = classify_gemini_provider_error(
+            {"error": {"status": "UNAVAILABLE", "message": "temporary outage"}}
+        )
+
+        self.assertFalse(
+            resolve_provider_retry_decision(
+                provider_error=non_retryable_error,
+                policy=ProviderRetryPolicy(max_attempts=3),
+                attempt_index=1,
+            ).should_retry
+        )
+        self.assertFalse(
+            resolve_provider_retry_decision(
+                provider_error=retryable_error,
+                policy=ProviderRetryPolicy(max_attempts=3),
+                attempt_index=3,
+            ).should_retry
+        )
+
+    def test_exp_001_fu_01c_uses_bounded_provider_delay_when_enabled(self):
+        provider_error = classify_gemini_provider_error(
+            {
+                "error": {
+                    "status": "RESOURCE_EXHAUSTED",
+                    "message": "Quota exceeded. Please retry in 49.272417405s.",
+                }
+            }
+        )
+
+        decision = resolve_provider_retry_decision(
+            provider_error=provider_error,
+            policy=ProviderRetryPolicy(
+                max_attempts=3,
+                delay_retry_enabled=True,
+                retry_buffer_seconds=2,
+                max_single_delay_seconds=60,
+                max_total_delay_seconds=120,
+            ),
+            attempt_index=1,
+        )
+
+        self.assertTrue(decision.should_retry)
+        self.assertAlmostEqual(decision.wait_seconds, 51.272417405)
+        self.assertAlmostEqual(decision.total_delay_after_wait_seconds, 51.272417405)
+
+    def test_exp_001_fu_01c_caps_single_and_total_delay(self):
+        provider_error = classify_gemini_provider_error(
+            {
+                "error": {
+                    "status": "RESOURCE_EXHAUSTED",
+                    "message": "Quota exceeded. Please retry in 49.272417405s.",
+                }
+            }
+        )
+
+        single_cap_decision = resolve_provider_retry_decision(
+            provider_error=provider_error,
+            policy=ProviderRetryPolicy(
+                delay_retry_enabled=True,
+                max_single_delay_seconds=20,
+                max_total_delay_seconds=120,
+            ),
+            attempt_index=1,
+        )
+        total_cap_decision = resolve_provider_retry_decision(
+            provider_error=provider_error,
+            policy=ProviderRetryPolicy(
+                delay_retry_enabled=True,
+                max_single_delay_seconds=60,
+                max_total_delay_seconds=55,
+            ),
+            attempt_index=1,
+            total_delay_seconds=40,
+        )
+
+        self.assertEqual(single_cap_decision.wait_seconds, 20)
+        self.assertEqual(total_cap_decision.wait_seconds, 15)
+        self.assertEqual(total_cap_decision.total_delay_after_wait_seconds, 55)
+
+    def test_exp_001_fu_01c_uses_default_backoff_without_provider_delay(self):
+        provider_error = classify_gemini_provider_error(
+            {"error": {"status": "UNAVAILABLE", "message": "temporary outage"}}
+        )
+
+        decision = resolve_provider_retry_decision(
+            provider_error=provider_error,
+            policy=ProviderRetryPolicy(
+                delay_retry_enabled=True,
+                default_initial_backoff_seconds=5,
+                retry_buffer_seconds=2,
+            ),
+            attempt_index=1,
+        )
+
+        self.assertEqual(decision.wait_seconds, 7)
+
+    def test_exp_001_fu_01c_respects_delay_retry_budget_without_blocking_retry(self):
+        provider_error = classify_gemini_provider_error(
+            {
+                "error": {
+                    "status": "RESOURCE_EXHAUSTED",
+                    "message": "Quota exceeded. Please retry in 5s.",
+                }
+            }
+        )
+
+        decision = resolve_provider_retry_decision(
+            provider_error=provider_error,
+            policy=ProviderRetryPolicy(
+                max_attempts=3,
+                delay_retry_enabled=True,
+                delay_retry_times=1,
+            ),
+            attempt_index=1,
+            delay_retry_count=1,
+        )
+
+        self.assertTrue(decision.should_retry)
+        self.assertIsNone(decision.wait_seconds)
+
+    def test_exp_001_fu_01c_uses_injected_sleeper_only_when_waiting(self):
+        calls = []
+        delayed_decision = resolve_provider_retry_decision(
+            provider_error=classify_gemini_provider_error(
+                {"error": {"status": "UNAVAILABLE", "message": "temporary outage"}}
+            ),
+            policy=ProviderRetryPolicy(delay_retry_enabled=True),
+            attempt_index=1,
+        )
+        immediate_decision = resolve_provider_retry_decision(
+            provider_error=classify_gemini_provider_error(
+                {"error": {"status": "UNAVAILABLE", "message": "temporary outage"}}
+            ),
+            policy=ProviderRetryPolicy(delay_retry_enabled=False),
+            attempt_index=1,
+        )
+
+        sleep_for_provider_retry_delay(delayed_decision, sleeper=calls.append)
+        sleep_for_provider_retry_delay(immediate_decision, sleeper=calls.append)
+
+        self.assertEqual(calls, [7])
 
 
 class GeminiTraitResponseParserTests(unittest.TestCase):
