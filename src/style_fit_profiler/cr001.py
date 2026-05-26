@@ -165,6 +165,8 @@ class CR001SingleImageExtractionResult:
     model: str | None = None
     record: dict[str, Any] | None = None
     error: str | None = None
+    retryable: bool | None = None
+    provider_error: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -379,6 +381,8 @@ def run_cr001_batch_extraction(
     for batch in batches:
         remaining_records = list(batch.records)
         failed_errors_by_source: dict[str, str] = {}
+        failed_retryable_by_source: dict[str, bool] = {}
+        failed_provider_errors_by_source: dict[str, Mapping[str, Any]] = {}
         attempt_count = 0
 
         for attempt_index in range(1, max_attempts + 1):
@@ -391,6 +395,8 @@ def run_cr001_batch_extraction(
             )
             remaining_records = []
             failed_errors_by_source = {}
+            failed_retryable_by_source = {}
+            failed_provider_errors_by_source = {}
 
             for result in attempt_results:
                 image_report_by_source[result.source_image] = _cr001_image_report_record(
@@ -402,7 +408,19 @@ def run_cr001_batch_extraction(
                     valid_records_by_source[result.source_image] = result.record
                     continue
                 failed_errors_by_source[result.source_image] = result.error or "unknown error"
-                if result.source_image in batch.input_paths:
+                failed_retryable_by_source[result.source_image] = (
+                    result.retryable
+                    if result.retryable is not None
+                    else True
+                )
+                if result.provider_error is not None:
+                    failed_provider_errors_by_source[result.source_image] = (
+                        result.provider_error
+                    )
+                if (
+                    result.source_image in batch.input_paths
+                    and failed_retryable_by_source[result.source_image]
+                ):
                     remaining_records.append(
                         _find_manifest_record_by_source(
                             batch.records,
@@ -420,6 +438,14 @@ def run_cr001_batch_extraction(
             source_image in valid_records_by_source
             for source_image in batch.input_paths
         )
+        batch_retryable = any(
+            failed_retryable_by_source.get(source_image, True)
+            for source_image in failed_image_paths
+        )
+        provider_error = _cr001_batch_provider_error(
+            failed_image_paths=failed_image_paths,
+            failed_provider_errors_by_source=failed_provider_errors_by_source,
+        )
         batch_report_records.append(
             {
                 "batch_index": batch.index,
@@ -430,13 +456,14 @@ def run_cr001_batch_extraction(
                     failed_errors_by_source=failed_errors_by_source,
                 ),
                 "output_paths": [CR001_NATIVE_ARTIFACT_PATH] if batch_has_valid_output else [],
-                "retryable": status == "failed",
+                "retryable": status == "failed" and batch_retryable,
                 "attempt_count": attempt_count,
                 "max_attempts": max_attempts,
                 "remaining_attempts": max_attempts - attempt_count,
                 "retry_exhausted": status == "failed" and attempt_count >= max_attempts,
                 "next_retry_scope": "failed_images" if status == "failed" else None,
                 "failed_image_paths": failed_image_paths,
+                "provider_error": provider_error,
             }
         )
 
@@ -854,8 +881,23 @@ def _run_cr001_batch_attempt(
     records: Sequence[Mapping[str, Any]],
     raw_extractor: Callable[..., Sequence[CR001GeminiRawAnalysis]],
 ) -> tuple[CR001SingleImageExtractionResult, ...]:
+    from .gemini_image_probe import GeminiImageProbeError
+
     source_images = tuple(_manifest_record_source_image(record) for record in records)
-    raw_analyses = tuple(raw_extractor(tuple(records)))
+    try:
+        raw_analyses = tuple(raw_extractor(tuple(records)))
+    except GeminiImageProbeError as error:
+        provider_error = _classify_cr001_provider_error(error)
+        return tuple(
+            CR001SingleImageExtractionResult(
+                valid=False,
+                source_image=source_image,
+                error=str(error),
+                retryable=bool(provider_error.get("retryable")),
+                provider_error=provider_error,
+            )
+            for source_image in source_images
+        )
     raw_by_source: dict[str, CR001GeminiRawAnalysis] = {}
     results: list[CR001SingleImageExtractionResult] = []
 
@@ -871,6 +913,7 @@ def _run_cr001_batch_attempt(
                         "CR-001 batch extraction unexpected source_image: "
                         f"{raw_analysis.source_image}"
                     ),
+                    retryable=False,
                 )
             )
             continue
@@ -885,6 +928,7 @@ def _run_cr001_batch_attempt(
                         "CR-001 batch extraction duplicate source_image: "
                         f"{raw_analysis.source_image}"
                     ),
+                    retryable=True,
                 )
             )
             continue
@@ -898,6 +942,7 @@ def _run_cr001_batch_attempt(
                     valid=False,
                     source_image=source_image,
                     error="CR-001 batch extraction missing raw analysis",
+                    retryable=True,
                 )
             )
             continue
@@ -914,6 +959,7 @@ def _run_cr001_batch_attempt(
                     raw_response_text=raw_analysis.response_text,
                     model=raw_analysis.model,
                     error=parse_result.error,
+                    retryable=True,
                 )
             )
             continue
@@ -954,7 +1000,40 @@ def _cr001_image_report_record(
         "analysis_status": "completed" if result.valid else "failed",
         "model": result.model,
         "error": result.error,
+        "retryable": (
+            result.retryable
+            if result.retryable is not None
+            else not result.valid
+        ),
+        "provider_error": (
+            dict(result.provider_error)
+            if result.provider_error is not None
+            else None
+        ),
     }
+
+
+def _classify_cr001_provider_error(error: Exception) -> Mapping[str, Any]:
+    from .gemini_image_probe import (
+        classify_gemini_provider_error,
+        gemini_provider_error_to_json_record,
+    )
+
+    return gemini_provider_error_to_json_record(
+        classify_gemini_provider_error(error)
+    )
+
+
+def _cr001_batch_provider_error(
+    *,
+    failed_image_paths: Sequence[str],
+    failed_provider_errors_by_source: Mapping[str, Mapping[str, Any]],
+) -> Mapping[str, Any] | None:
+    for source_image in failed_image_paths:
+        provider_error = failed_provider_errors_by_source.get(source_image)
+        if provider_error is not None:
+            return dict(provider_error)
+    return None
 
 
 def _format_cr001_batch_error(
@@ -976,10 +1055,15 @@ def _build_cr001_batch_run_report(
     batch_records: Sequence[Mapping[str, Any]],
     image_records: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
+    failed_batch_indexes = [
+        batch_record["batch_index"]
+        for batch_record in batch_records
+        if batch_record["status"] == "failed"
+    ]
     retryable_batch_indexes = [
         batch_record["batch_index"]
         for batch_record in batch_records
-        if batch_record["retryable"]
+        if batch_record["status"] == "failed" and batch_record["retryable"]
     ]
     return {
         "schema_version": CR001_NATIVE_ARTIFACT_SCHEMA_VERSION,
@@ -989,7 +1073,10 @@ def _build_cr001_batch_run_report(
             "completed_batches": sum(
                 1 for batch_record in batch_records if batch_record["status"] == "completed"
             ),
-            "failed_batches": len(retryable_batch_indexes),
+            "failed_batches": len(failed_batch_indexes),
+            "retried_batches": sum(
+                1 for batch_record in batch_records if batch_record["attempt_count"] > 1
+            ),
             "retryable_batch_indexes": retryable_batch_indexes,
         },
         "batches": [dict(batch_record) for batch_record in batch_records],

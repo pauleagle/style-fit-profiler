@@ -19,7 +19,7 @@ related_items:
   - CR-001
 integration_status: implementation-in-progress
 workflow_step: Step 5 - Spec-Based Test Design
-next_atomic_item: EXP-001-FU-01F
+next_atomic_item: EXP-001-FU-01G
 ```
 
 ## Parent Trace
@@ -84,7 +84,7 @@ Implementation rule:
 | `EXP-001-FU-01C` | implemented | Step 6 - Implementation Verified | Retry decision and delay resolver, including `should_retry`, bounded delay calculation, delay retry budget, total-delay cap, and injected sleeper contract. No batch command integration yet. | `EXP-001-FU-01A`, `EXP-001-FU-01B` | Attempt budget tests, non-retryable failure tests, `max_attempts - 1` delay cap, `max_single_delay_seconds`, `max_total_delay_seconds`, buffer application only when delay enabled, and no-op injected sleeper calls. |
 | `EXP-001-FU-01D` | implemented | Step 6 - Implementation Verified | Single-image command diagnostics for legacy `gemini_image_probe` and CR-001 `cr001_gemini_probe single`: classify provider failures and fail fast without automatic retry. | `EXP-001-FU-01A`, optionally `EXP-001-FU-01B` for display policy | Simulated provider quota/auth errors prove single commands do not retry, return non-zero, and surface machine-readable provider metadata or clear diagnostic output without writing misleading semantic artifacts. |
 | `EXP-001-FU-01E` | implemented | Step 6 - Implementation Verified | Legacy EXP / Phase 0 batch integration for `gemini_batch_probe` and related batch report metadata. Delay retry stays off by default. | `EXP-001-FU-01A` through `EXP-001-FU-01C` | Quota error followed by success, exhausted quota error, non-retryable provider error, delay disabled immediate retry, delay enabled injected sleeper, partial output preservation, and summary retry counts. |
-| `EXP-001-FU-01F` | accepted | Step 5 - Spec-Based Test Design | CR-001 batch integration for `cr001_gemini_probe batch` / `run_cr001_batch_extraction`, keeping CR-001 native semantic artifact clean while adding provider metadata to runtime report. | `EXP-001-FU-01A` through `EXP-001-FU-01C`; can reuse batch helpers from `EXP-001-FU-01E` | Failed-image scope retry, valid native records preserved, failed provider metadata in CR-001 batch report, no runtime fields inside native records, delay policy read from config, and non-retryable failures excluded from retry scope. |
+| `EXP-001-FU-01F` | implemented | Step 6 - Implementation Verified | CR-001 batch integration for `cr001_gemini_probe batch` / `run_cr001_batch_extraction`, keeping CR-001 native semantic artifact clean while adding provider metadata to runtime report. | `EXP-001-FU-01A` through `EXP-001-FU-01C`; can reuse batch helpers from `EXP-001-FU-01E` | Retryable provider error followed by success, exhausted provider error in CR-001 batch report, native artifact remains semantic-only, non-retryable provider errors excluded from retry scope, summary retry counts, and manual mutation of non-retryable retry gating. |
 | `EXP-001-FU-01G` | accepted | Step 5 - Spec-Based Test Design | Manual command docs, README / spec traceability, and final verification notes. No code behavior ownership. | `EXP-001-FU-01A` through `EXP-001-FU-01F` | Documentation readback, traceability search for parent/follow-up IDs, `git diff --check`, and full unit suite if any code changed in the previous items. |
 
 ### Item Notes
@@ -186,6 +186,7 @@ Non-goals:
 Completion signal:
 
 - CR-001 batch report carries provider retry metadata, while `phase0/cr001_reference_image_analysis.json` remains semantic-only.
+- Implemented in `run_cr001_batch_extraction` and covered by `tests/test_cr001_batch_integration.py`; manual mutation confirmed non-retryable provider failures would be caught if they were accidentally retried.
 
 #### `EXP-001-FU-01G`: Docs And Traceability
 
@@ -227,7 +228,7 @@ Open questions before implementation:
 
 Next workflow step:
 
-- Begin Step 5 test design for `EXP-001-FU-01A`.
+- Begin Step 5 test design / docs readback for `EXP-001-FU-01G`.
 
 ## Summary
 
