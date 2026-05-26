@@ -10,6 +10,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
+import re
 import sys
 from typing import Any, Callable, Mapping, Sequence
 from urllib.error import HTTPError, URLError
@@ -35,6 +36,27 @@ GEMINI_TRAIT_ASPECTS = (
     "texture_artifacts",
 )
 GEMINI_TRAIT_RESPONSE_KEYS = frozenset((*GEMINI_TRAIT_ASPECTS, "notes"))
+GEMINI_PROVIDER_RETRY_AFTER_PATTERN = re.compile(
+    r"\bretry\s+in\s+([0-9]+(?:\.[0-9]+)?)\s*s\b",
+    re.IGNORECASE,
+)
+GEMINI_PROVIDER_STATUS_ERROR_TYPES = {
+    "RESOURCE_EXHAUSTED": "provider_quota_exhausted",
+    "UNAVAILABLE": "provider_unavailable",
+    "INTERNAL": "provider_internal_error",
+    "DEADLINE_EXCEEDED": "provider_timeout",
+    "INVALID_ARGUMENT": "invalid_request",
+    "UNAUTHENTICATED": "auth_error",
+    "PERMISSION_DENIED": "permission_error",
+}
+GEMINI_RETRYABLE_PROVIDER_STATUSES = frozenset(
+    {
+        "RESOURCE_EXHAUSTED",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "DEADLINE_EXCEEDED",
+    }
+)
 
 DEFAULT_ANALYSIS_PROMPT = """Analyze this local reference image for a style-fit profiler.
 
@@ -84,6 +106,18 @@ class GeminiImageProbeError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class GeminiProviderError:
+    """Normalized Gemini provider error metadata for retry decisions."""
+
+    type: str
+    provider_status: str | None = None
+    retryable: bool = False
+    message: str = ""
+    retry_after_seconds: float | None = None
+    provider_http_status: int | None = None
+
+
+@dataclass(frozen=True)
 class GeminiImageTraitAnalysis:
     """Normalized Gemini trait analysis for one source image."""
 
@@ -100,6 +134,79 @@ class GeminiImageTraitAnalysis:
             },
             "notes": self.notes,
         }
+
+
+def extract_gemini_retry_after_seconds(message: str) -> float | None:
+    if not isinstance(message, str) or not message:
+        return None
+
+    match = GEMINI_PROVIDER_RETRY_AFTER_PATTERN.search(message)
+    if match is None:
+        return None
+    return float(match.group(1))
+
+
+def classify_gemini_provider_error(error: object) -> GeminiProviderError:
+    payload = _gemini_provider_error_payload(error)
+    error_record = (
+        payload.get("error")
+        if isinstance(payload.get("error"), Mapping)
+        else payload
+    )
+    status = _normalize_gemini_provider_status(error_record.get("status"))
+    message = error_record.get("message", "")
+    if not isinstance(message, str):
+        message = str(message)
+
+    error_type = GEMINI_PROVIDER_STATUS_ERROR_TYPES.get(
+        status or "",
+        "unknown_provider_error",
+    )
+    return GeminiProviderError(
+        type=error_type,
+        provider_status=status,
+        retryable=status in GEMINI_RETRYABLE_PROVIDER_STATUSES,
+        message=message,
+        retry_after_seconds=extract_gemini_retry_after_seconds(message),
+        provider_http_status=_normalize_gemini_provider_http_status(
+            error_record.get("code")
+        ),
+    )
+
+
+def _gemini_provider_error_payload(error: object) -> Mapping[str, Any]:
+    if isinstance(error, Mapping):
+        return error
+
+    text = str(error)
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace >= 0 and last_brace > first_brace:
+        try:
+            payload = json.loads(text[first_brace:last_brace + 1])
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, Mapping):
+            return payload
+
+    return {"message": text}
+
+
+def _normalize_gemini_provider_status(status: Any) -> str | None:
+    if not isinstance(status, str):
+        return None
+    normalized_status = status.strip().upper()
+    return normalized_status or None
+
+
+def _normalize_gemini_provider_http_status(code: Any) -> int | None:
+    if isinstance(code, bool):
+        return None
+    if isinstance(code, int):
+        return code
+    if isinstance(code, str) and code.strip().isdigit():
+        return int(code.strip())
+    return None
 
 
 def parse_gemini_trait_response(response_text: str) -> dict[str, tuple[str, ...]]:

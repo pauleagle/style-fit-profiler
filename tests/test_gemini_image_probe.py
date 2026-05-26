@@ -26,6 +26,8 @@ from style_fit_profiler.gemini_image_probe import (  # noqa: E402
     GeminiPhase0Extractor,
     build_batch_generate_content_payload,
     build_generate_content_payload,
+    classify_gemini_provider_error,
+    extract_gemini_retry_after_seconds,
     extract_response_text,
     guess_image_mime_type,
     main,
@@ -142,6 +144,76 @@ class GeminiImageProbeTests(unittest.TestCase):
     def test_default_prompt_mentions_no_artist_or_character_name_rule(self):
         self.assertIn("Do not invent artist names", DEFAULT_ANALYSIS_PROMPT)
         self.assertIn("Analyze each local reference image", DEFAULT_BATCH_ANALYSIS_PROMPT)
+
+
+class GeminiProviderErrorClassificationTests(unittest.TestCase):
+    def test_exp_001_fu_01a_classifies_resource_exhausted_with_retry_delay(self):
+        provider_error = classify_gemini_provider_error(
+            {
+                "error": {
+                    "code": 429,
+                    "status": "RESOURCE_EXHAUSTED",
+                    "message": "Quota exceeded. Please retry in 49.272417405s.",
+                }
+            }
+        )
+
+        self.assertEqual(provider_error.type, "provider_quota_exhausted")
+        self.assertEqual(provider_error.provider_status, "RESOURCE_EXHAUSTED")
+        self.assertTrue(provider_error.retryable)
+        self.assertEqual(provider_error.provider_http_status, 429)
+        self.assertAlmostEqual(provider_error.retry_after_seconds, 49.272417405)
+
+    def test_exp_001_fu_01a_classifies_retryable_transient_statuses(self):
+        cases = {
+            "UNAVAILABLE": "provider_unavailable",
+            "INTERNAL": "provider_internal_error",
+            "DEADLINE_EXCEEDED": "provider_timeout",
+        }
+
+        for status, expected_type in cases.items():
+            with self.subTest(status=status):
+                provider_error = classify_gemini_provider_error(
+                    {"error": {"status": status, "message": "temporary provider error"}}
+                )
+
+                self.assertEqual(provider_error.type, expected_type)
+                self.assertEqual(provider_error.provider_status, status)
+                self.assertTrue(provider_error.retryable)
+
+    def test_exp_001_fu_01a_classifies_non_retryable_provider_statuses(self):
+        cases = {
+            "INVALID_ARGUMENT": "invalid_request",
+            "UNAUTHENTICATED": "auth_error",
+            "PERMISSION_DENIED": "permission_error",
+            "SOMETHING_NEW": "unknown_provider_error",
+        }
+
+        for status, expected_type in cases.items():
+            with self.subTest(status=status):
+                provider_error = classify_gemini_provider_error(
+                    {"error": {"status": status, "message": "provider rejected request"}}
+                )
+
+                self.assertEqual(provider_error.type, expected_type)
+                self.assertEqual(provider_error.provider_status, status)
+                self.assertFalse(provider_error.retryable)
+
+    def test_exp_001_fu_01a_extracts_retry_delay_from_stringified_http_error(self):
+        provider_error = classify_gemini_provider_error(
+            GeminiImageProbeError(
+                'Gemini API HTTP 429: {"error":{"status":"RESOURCE_EXHAUSTED",'
+                '"message":"Please retry in 5s."}}'
+            )
+        )
+
+        self.assertEqual(provider_error.type, "provider_quota_exhausted")
+        self.assertTrue(provider_error.retryable)
+        self.assertEqual(provider_error.retry_after_seconds, 5.0)
+
+    def test_exp_001_fu_01a_retry_delay_parser_returns_none_without_delay(self):
+        self.assertIsNone(extract_gemini_retry_after_seconds("Quota exceeded."))
+        self.assertIsNone(extract_gemini_retry_after_seconds(""))
 
 
 class GeminiTraitResponseParserTests(unittest.TestCase):
