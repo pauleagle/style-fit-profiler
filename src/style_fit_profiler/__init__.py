@@ -3,6 +3,7 @@
 from .config import (
     ALLOWED_REFERENCE_IMAGE_ASPECTS,
     ConfigValidationError,
+    ProviderRetryPolicy,
     ReferenceImageAnalysisPolicy,
 )
 from .cr001 import (
@@ -112,6 +113,7 @@ __all__ = [
     "Phase0Error",
     "Phase0Result",
     "Phase0Status",
+    "ProviderRetryPolicy",
     "ReferenceImageAnalysisPolicy",
     "STYLE_GENE_CANDIDATE_ASPECTS",
     "STYLE_GENE_CANDIDATE_FIELDS",

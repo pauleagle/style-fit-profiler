@@ -19,7 +19,7 @@ related_items:
   - CR-001
 integration_status: implementation-in-progress
 workflow_step: Step 5 - Spec-Based Test Design
-next_atomic_item: EXP-001-FU-01B
+next_atomic_item: EXP-001-FU-01C
 ```
 
 ## Parent Trace
@@ -80,7 +80,7 @@ Implementation rule:
 | ID | Status | Workflow step | Scope | Dependencies | Primary tests |
 |---|---|---|---|---|---|
 | `EXP-001-FU-01A` | implemented | Step 6 - Implementation Verified | Provider error model, classifier, and Gemini retry-delay parser. No command behavior change. | None | Classification fixtures for `RESOURCE_EXHAUSTED`, transient statuses, auth/config failures, unknown errors, and `Please retry in ...s` parsing. |
-| `EXP-001-FU-01B` | accepted | Step 5 - Spec-Based Test Design | Config-owned provider retry policy defaults and validation under `reference_image_analysis_policy.provider_retry_policy`. Preserve existing `max_attempts` semantics. | `EXP-001-FU-01A` only for shared types if needed | Config load/default tests, invalid policy values, delay retry disabled default, `delay_retry_times=2`, `max_total_delay_seconds=120`, and CLI override precedence where a command already exposes retry flags. |
+| `EXP-001-FU-01B` | implemented | Step 6 - Implementation Verified | Config-owned provider retry policy defaults and validation under `reference_image_analysis_policy.provider_retry_policy`. Preserve existing `max_attempts` semantics. | `EXP-001-FU-01A` only for shared types if needed | Config load/default tests, invalid policy values, delay retry disabled default, `delay_retry_times=2`, `max_total_delay_seconds=120`, and CLI override precedence where a command already exposes retry flags. |
 | `EXP-001-FU-01C` | accepted | Step 5 - Spec-Based Test Design | Retry decision and delay resolver, including `should_retry`, bounded delay calculation, delay retry budget, total-delay cap, and injected sleeper contract. No batch command integration yet. | `EXP-001-FU-01A`, `EXP-001-FU-01B` | Attempt budget tests, non-retryable failure tests, `max_attempts - 1` delay cap, `max_single_delay_seconds`, `max_total_delay_seconds`, buffer application only when delay enabled, and no-op injected sleeper calls. |
 | `EXP-001-FU-01D` | accepted | Step 5 - Spec-Based Test Design | Single-image command diagnostics for legacy `gemini_image_probe` and CR-001 `cr001_gemini_probe single`: classify provider failures and fail fast without automatic retry. | `EXP-001-FU-01A`, optionally `EXP-001-FU-01B` for display policy | Simulated provider quota/auth errors prove single commands do not retry, return non-zero, and surface machine-readable provider metadata or clear diagnostic output without writing misleading semantic artifacts. |
 | `EXP-001-FU-01E` | accepted | Step 5 - Spec-Based Test Design | Legacy EXP / Phase 0 batch integration for `gemini_batch_probe` and related batch report metadata. Delay retry stays off by default. | `EXP-001-FU-01A` through `EXP-001-FU-01C` | Quota error followed by success, exhausted quota error, non-retryable provider error, delay disabled immediate retry, delay enabled injected sleeper, partial output preservation, and summary retry counts. |
