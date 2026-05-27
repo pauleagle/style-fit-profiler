@@ -1,4 +1,4 @@
-# CR-001-FU-03 Add hierarchical run trace compression and RAG ingestion
+# CR-001-FU-04 Add hierarchical run trace compression and RAG ingestion
 
 ## Status
 
@@ -195,12 +195,12 @@ Suggested DA questions:
 During workflow drill-down, use questions like:
 
 ```text
-Please drill down CR-001-FU-03 into atomic implementation steps.
+Please drill down CR-001-FU-04 into atomic implementation steps.
 Focus on the smallest file-based MVP that can capture one CR-001-FU-02 run, produce a run-summary.md, and generate a RAG-ready card without changing existing CR-001 outputs.
 ```
 
 ```text
-Please perform Devil's Advocate review on the proposed CR-001-FU-03 design.
+Please perform Devil's Advocate review on the proposed CR-001-FU-04 design.
 Challenge whether run trace compression could pollute RAG, overfit to noisy model behavior, or create misleading reusable lessons.
 Suggest guardrails before implementation.
 ```
